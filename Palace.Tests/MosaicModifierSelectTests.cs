@@ -56,6 +56,10 @@ public sealed class MosaicModifierSelectTests
         Assert.False(MosaicModifierSelect.EndsModifierSuppress(null, 42u));
         Assert.True(MosaicModifierSelect.HasStaleModifierSuppress(42u));
         Assert.False(MosaicModifierSelect.HasStaleModifierSuppress(null));
+        Assert.False(MosaicModifierSelect.ClearsSuppressOnPageLostFocus);
+        Assert.True(MosaicModifierSelect.LiftsSuppressWhenEnqueueFails(true, false));
+        Assert.False(MosaicModifierSelect.LiftsSuppressWhenEnqueueFails(true, true));
+        Assert.False(MosaicModifierSelect.LiftsSuppressWhenEnqueueFails(false, false));
     }
 
     [Fact]

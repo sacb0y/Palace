@@ -251,4 +251,30 @@ public sealed class MosaicSelectHarnessTests
         Assert.Equal(1, h.SelectionCount);
         Assert.Same(b, h.Selection[0]);
     }
+
+    [Fact]
+    public void DescendantFocusDuringModifierPress_DoesNotLiftSuppress()
+    {
+        var a = new MosaicSelectHarness.Tile("a");
+        var h = new MosaicSelectHarness([a]);
+        h.BeginModifierPress(pointerId: 7);
+        Assert.True(h.SuppressMosaicSelection);
+
+        // SoftCtrl often moves keyboard focus to another mosaic tile first.
+        h.OnDescendantFocusChanged();
+        Assert.True(h.SuppressMosaicSelection);
+        Assert.Equal(7u, h.ModifierSuppressPointerId);
+        Assert.False(MosaicModifierSelect.ClearsSuppressOnPageLostFocus);
+    }
+
+    [Fact]
+    public void EndModifierPress_EnqueueFails_LiftsSuppressImmediately()
+    {
+        var a = new MosaicSelectHarness.Tile("a");
+        var h = new MosaicSelectHarness([a]);
+        h.BeginModifierPress(pointerId: 3);
+        h.EndModifierPressWithEnqueue(3, enqueueSucceeded: false);
+        Assert.False(h.SuppressMosaicSelection);
+        Assert.Null(h.ModifierSuppressPointerId);
+    }
 }

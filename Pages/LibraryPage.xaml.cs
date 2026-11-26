@@ -414,13 +414,13 @@ public sealed partial class LibraryPage : Page
     }
 
     /// <summary>
-    /// Page LostFocus + window deactivation clear a stuck modifier suppress
-    /// (drag off grid / Alt+Tab never deliver Released to GrdAssets).
+    /// Window deactivation clears a stuck modifier suppress (Alt+Tab). Do not
+    /// clear on page LostFocus — focus moves between mosaic descendants during
+    /// SoftCtrl and would lift suppress early (Wimbly). Released / CaptureLost /
+    /// Canceled / Unloaded / stale RangePressed cover the rest.
     /// </summary>
     private void HookModifierSuppressLifetime()
     {
-        LostFocus -= LibraryPage_LostFocusClearModifierSuppress;
-        LostFocus += LibraryPage_LostFocusClearModifierSuppress;
         if (App.Window is { } window)
         {
             window.Activated -= LibraryWindow_ActivatedClearModifierSuppress;
@@ -430,7 +430,6 @@ public sealed partial class LibraryPage : Page
 
     private void UnhookModifierSuppressLifetime()
     {
-        LostFocus -= LibraryPage_LostFocusClearModifierSuppress;
         if (App.Window is { } window)
         {
             window.Activated -= LibraryWindow_ActivatedClearModifierSuppress;
@@ -438,9 +437,6 @@ public sealed partial class LibraryPage : Page
 
         ClearModifierSelectionSuppress(enqueueRestore: false);
     }
-
-    private void LibraryPage_LostFocusClearModifierSuppress(object sender, RoutedEventArgs e) =>
-        ClearModifierSelectionSuppress(enqueueRestore: false);
 
     private void LibraryWindow_ActivatedClearModifierSuppress(
         object sender,
@@ -455,6 +451,7 @@ public sealed partial class LibraryPage : Page
     /// <summary>
     /// Lift modifier-held mosaic suppress. When <paramref name="enqueueRestore"/>,
     /// re-stamp ItemsView from the model after ItemsView's Released toggle.
+    /// If enqueue fails, lift suppress immediately so selection is never stuck.
     /// </summary>
     private void ClearModifierSelectionSuppress(bool enqueueRestore)
     {
@@ -466,7 +463,7 @@ public sealed partial class LibraryPage : Page
         _modifierSuppressPointerId = null;
         if (enqueueRestore)
         {
-            DispatcherQueue.TryEnqueue(() =>
+            var queued = DispatcherQueue.TryEnqueue(() =>
             {
                 try
                 {
@@ -477,6 +474,11 @@ public sealed partial class LibraryPage : Page
                     _suppressMosaicSelection = false;
                 }
             });
+            if (!queued)
+            {
+                _suppressMosaicSelection = false;
+            }
+
             return;
         }
 

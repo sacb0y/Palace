@@ -195,11 +195,47 @@ public sealed class MosaicSelectHarness
         ClearModifierSuppress();
     }
 
-    /// <summary>LostFocus / Unloaded / deactivation / stale RangePressed self-heal.</summary>
+    /// <summary>Unloaded / deactivation / stale RangePressed / matching pointer end.</summary>
     public void ClearModifierSuppress()
     {
         ModifierSuppressPointerId = null;
         SuppressMosaicSelection = false;
+    }
+
+    /// <summary>
+    /// Focus moved between page descendants during an open modifier press.
+    /// Must not lift suppress (page LostFocus is a false positive).
+    /// </summary>
+    public void OnDescendantFocusChanged()
+    {
+        if (MosaicModifierSelect.ClearsSuppressOnPageLostFocus)
+        {
+            ClearModifierSuppress();
+        }
+    }
+
+    /// <summary>
+    /// Released path: enqueue restore; if enqueue fails, lift suppress now.
+    /// </summary>
+    public void EndModifierPressWithEnqueue(uint pointerId, bool enqueueSucceeded)
+    {
+        if (!MosaicModifierSelect.EndsModifierSuppress(ModifierSuppressPointerId, pointerId))
+        {
+            return;
+        }
+
+        ModifierSuppressPointerId = null;
+        if (MosaicModifierSelect.LiftsSuppressWhenEnqueueFails(enqueueRequested: true, enqueueSucceeded))
+        {
+            SuppressMosaicSelection = false;
+            return;
+        }
+
+        if (enqueueSucceeded)
+        {
+            // Simulated dispatcher: restore done, then lift.
+            SuppressMosaicSelection = false;
+        }
     }
 
     /// <summary>

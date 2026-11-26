@@ -39,6 +39,19 @@ public static class MosaicModifierSelect
     public static bool HasStaleModifierSuppress(uint? suppressPointerId) =>
         suppressPointerId is not null;
 
+    /// <summary>
+    /// Page LostFocus must not lift modifier suppress — SoftCtrl moves keyboard
+    /// focus between mosaic descendants while the pointer press is still open.
+    /// </summary>
+    public static bool ClearsSuppressOnPageLostFocus => false;
+
+    /// <summary>
+    /// When a restore enqueue is requested after Released, a failed
+    /// <c>TryEnqueue</c> must still lift suppress immediately.
+    /// </summary>
+    public static bool LiftsSuppressWhenEnqueueFails(bool enqueueRequested, bool enqueueSucceeded) =>
+        enqueueRequested && !enqueueSucceeded;
+
     /// <summary>Shift alone (no Ctrl) ranges from anchor without moving it.</summary>
     public static bool RangesFromAnchor(bool ctrl, bool shift) => shift && !ctrl;
 
