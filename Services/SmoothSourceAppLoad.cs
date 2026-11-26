@@ -57,7 +57,8 @@ internal static class SmoothSourceAppLoad
             viewportPixelHeight: 0,
             scaling: ImageScaling.Actual,
             cancellation: ct,
-            buildWorking: false);
+            buildWorking: false,
+            skipPresentScrgb: true);
         return PreferEncodedOrPresentScrgb(frame, probe);
     }
 

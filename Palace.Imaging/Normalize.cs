@@ -25,16 +25,12 @@ public static class Normalize
         // Mastering / encoded peak for clip detection. Linear EXR/JXR without
         // metadata peak: do NOT use buffer max (S1) — that falsely flags every
         // highlight-max frame. Require MetadataPeakNits (or encoded 0..1 max).
-        // Scrgb without MaxCLL: default clip ceil = paper white in scRGB
-        // (203/80) so SDR white (after EncodedRgbToScrgb) matches encoded+Sdr
-        // SourceClipped. Do not use buffer max (S1).
         float? clipCeil = options.Transfer switch
         {
             TransferKind.Pq or TransferKind.Hlg or TransferKind.Sdr => 1f,
-            TransferKind.Scrgb => (options.MetadataPeakNits is > 0f
-                    ? options.MetadataPeakNits.Value
-                    : ImagingConstants.RefWhiteNits)
-                / ImagingConstants.ScrgbNits,
+            TransferKind.Scrgb => options.MetadataPeakNits is > 0f
+                ? options.MetadataPeakNits.Value / ImagingConstants.ScrgbNits
+                : null,
             TransferKind.LinearScene => options.MetadataPeakNits is > 0f
                 ? options.MetadataPeakNits.Value / Math.Max(options.EffectiveWhiteNits, 1e-6f)
                 : null,

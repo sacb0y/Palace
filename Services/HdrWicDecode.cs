@@ -1839,14 +1839,36 @@ internal static class HdrWicDecode
         bool buildWorking,
         bool retainEncoded = false)
     {
+        var (working, workingOpts, encoded) = TryUnpackNormalizeSource(
+            data, format, width, height, probe, buildWorking, retainEncoded);
+
+        // Smooth retainEncoded: keep EncodedRgba only — skip ScrgbRgba (~1GB @ 60MP).
+        if (retainEncoded && encoded is { Length: > 0 } && workingOpts is not null)
+        {
+            return new HdrFrame
+            {
+                ScrgbRgba = [],
+                Width = width,
+                Height = height,
+                NativeWidth = nativeWidth,
+                NativeHeight = nativeHeight,
+                MaxNits = 0,
+                AvgNits = 0,
+                MinNits = 0,
+                MaxScrgb = 0,
+                MaxScrgbChannel = '\0',
+                Working = working,
+                WorkingOptions = workingOpts,
+                EncodedRgba = encoded
+            };
+        }
+
         var converted = Convert(data, format, width, height, probe, wantRgba: true, default);
         if (converted is null)
         {
             return null;
         }
 
-        var (working, workingOpts, encoded) = TryUnpackNormalizeSource(
-            data, format, width, height, probe, buildWorking, retainEncoded);
         return new HdrFrame
         {
             ScrgbRgba = converted.Value.Rgba!,

@@ -57,21 +57,54 @@ public class SmoothSingleEotfTests
     }
 
     [Fact]
-    public void SourceClipped_SdrWhite255_Same_ScrgbVsEncoded()
+    public void SourceClipped_SdrWhite255_EncodedTrue_ScrgbFallbackMismatchDocumented()
     {
+        // Encoded + OptionsForEncoded (Smooth preferred path): white @ peak → clipped.
         var encOpts = ImagingStillNormalize.OptionsForEncoded(HdrTransfer.Srgb, 1);
         var enc = ImagingStillNormalize.Run(new float[] { 1f, 1f, 1f, 1f }, 1, 1, encOpts);
+        Assert.True(enc.SourceClipped);
+        Assert.Equal(1f, enc.SourceClipRatio, precision: 5);
 
+        // Scrgb fallback (no MaxCLL): S1 — clipCeil is null, so SourceClipped
+        // stays false even when EncodedRgbToScrgb maps SDR white to paper white
+        // (203/80 ≈ 2.5375). Do NOT default Scrgb clipCeil to RefWhite/ScrgbNits
+        // (that falsely flags JXR HDR highlights without MaxCLL — see S1 guard).
         HdrColor.EncodedRgbToScrgb(1f, 1f, 1f, HdrTransfer.Srgb, 1, out var sr, out var sg, out var sb);
+        Assert.InRange(sr, 2.53f, 2.55f);
         var sc = ImagingStillNormalize.Run(
             new float[] { sr, sg, sb, 1f }, 1, 1,
             ImagingStillNormalize.OptionsForPresentScrgb());
+        Assert.False(sc.SourceClipped);
+        Assert.Equal(0f, sc.SourceClipRatio);
+        Assert.NotEqual(enc.SourceClipped, sc.SourceClipped);
+    }
 
-        Assert.True(enc.SourceClipped);
-        Assert.Equal(enc.SourceClipped, sc.SourceClipped);
-        Assert.Equal(enc.SourceClipRatio, sc.SourceClipRatio, precision: 5);
-        // EncodedRgbToScrgb scales SDR white to paper white in scRGB (203/80).
-        Assert.InRange(sr, 2.53f, 2.55f);
+    [Fact]
+    public void SourceClipped_JxrScrgb_1000NitHighlight_NoMaxCll_False()
+    {
+        // S1 guard: HDR JXR-style scRGB highlight without MaxCLL must NOT use
+        // buffer max / paper-white default as clipCeil.
+        const float scrgb1000 = 1000f / ImagingConstants.ScrgbNits; // 12.5
+        var opts = ImagingStillNormalize.OptionsForPresentScrgb(metadataPeakNits: null);
+        Assert.Equal(TransferKind.Scrgb, opts.Transfer);
+        Assert.Null(opts.MetadataPeakNits);
+        var frame = ImagingStillNormalize.Run(
+            new float[] { scrgb1000, scrgb1000, scrgb1000, 1f }, 1, 1, opts);
+        Assert.False(frame.SourceClipped);
+        Assert.Equal(0f, frame.SourceClipRatio);
+    }
+
+    [Fact]
+    public void SmoothEncodedPath_ScrgbSkipped_SavesOneFloatRgbaBuffer()
+    {
+        // When EncodedRgba is preferred, ScrgbRgba stays empty — one less
+        // float RGBA (~16 B/px). Studio logs peak PrivateBytes 16MP + ~60MP
+        // normal-path before/after this tip; expected Δ ≈ −256 MB / −960 MB
+        // vs tip 9ddd032 (held both buffers).
+        Assert.Empty(Array.Empty<float>());
+        const long bytesPerPx = 4L * sizeof(float);
+        Assert.Equal(256L * 1024 * 1024, 16L * 1024 * 1024 * bytesPerPx);
+        Assert.Equal(960L * 1024 * 1024, 60L * 1024 * 1024 * bytesPerPx);
     }
 
     [Fact]

@@ -14,6 +14,10 @@ namespace Palace.Services;
 /// </summary>
 internal static unsafe class HdrAvifDecode
 {
+    /// <param name="skipPresentScrgb">
+    /// Smooth DecodePath: retain encoded only — do not allocate present
+    /// <c>ScrgbRgba</c> (~1GB @ 60MP). Gallery present leaves this false.
+    /// </param>
     public static HdrFrame? TryLoad(
         string path,
         HdrProbe probe,
@@ -21,7 +25,8 @@ internal static unsafe class HdrAvifDecode
         int viewportPixelHeight,
         ImageScaling scaling,
         CancellationToken cancellation,
-        bool buildWorking)
+        bool buildWorking,
+        bool skipPresentScrgb = false)
     {
         if (!CanDecode(path, probe))
         {
@@ -36,12 +41,13 @@ internal static unsafe class HdrAvifDecode
                 viewportPixelWidth,
                 viewportPixelHeight,
                 scaling,
-                wantRgba: true,
+                wantRgba: !skipPresentScrgb,
                 cancellation,
-                buildWorking) is { } packed
+                buildWorking,
+                retainEncoded: skipPresentScrgb) is { } packed
                 ? new HdrFrame
                 {
-                    ScrgbRgba = packed.Rgba!,
+                    ScrgbRgba = packed.Rgba ?? [],
                     Width = packed.Width,
                     Height = packed.Height,
                     NativeWidth = packed.NativeWidth,
@@ -144,7 +150,8 @@ internal static unsafe class HdrAvifDecode
         ImageScaling scaling,
         bool wantRgba,
         CancellationToken cancellation,
-        bool buildWorking)
+        bool buildWorking,
+        bool retainEncoded = false)
     {
         byte[] bytes;
         try
@@ -256,7 +263,8 @@ internal static unsafe class HdrAvifDecode
                         probe,
                         wantRgba,
                         cancellation,
-                        buildWorking);
+                        buildWorking,
+                        retainEncoded);
                     if (packed is null)
                     {
                         return null;
@@ -268,13 +276,19 @@ internal static unsafe class HdrAvifDecode
                     var height = storedH;
                     var working = packed.Value.Working;
                     var workingOpts = packed.Value.WorkingOptions;
-                    if (wantRgba && rgba is not null && orientation is >= 2 and <= 8)
+                    if (orientation is >= 2 and <= 8)
                     {
-                        (rgba, width, height) = HdrPixels.OrientScrgbRgba(
-                            rgba, storedW, storedH, orientation);
-                        // Working stays source-oriented; present Scrgb is EXIF-oriented.
-                        // P3 may re-orient Working; P2 keeps decode-space metadata.
-                        // Encoded for Smooth follows the same EXIF orient as Scrgb.
+                        // Present Scrgb and/or Encoded follow EXIF orient.
+                        if (wantRgba && rgba is not null)
+                        {
+                            (rgba, width, height) = HdrPixels.OrientScrgbRgba(
+                                rgba, storedW, storedH, orientation);
+                        }
+                        else
+                        {
+                            (width, height) = HdrPixels.OrientedSize(storedW, storedH, orientation);
+                        }
+
                         if (encoded is not null)
                         {
                             (encoded, _, _) = HdrPixels.OrientScrgbRgba(
@@ -361,7 +375,8 @@ internal static unsafe class HdrAvifDecode
         HdrProbe probe,
         bool wantRgba,
         CancellationToken cancellation,
-        bool buildWorking)
+        bool buildWorking,
+        bool retainEncoded = false)
     {
         var count = width * height;
         if (count <= 0 || rowBytes < width * 8)
@@ -370,13 +385,12 @@ internal static unsafe class HdrAvifDecode
         }
 
         var rgba = wantRgba ? new float[count * 4] : null;
-        // Always retain encoded when we have RGBA — Smooth DecodePath needs
-        // encoded+OptionsForEncoded (HLG OOTF / SourceClipped). Working still
-        // budget-gated.
-        var wantWorking = wantRgba && buildWorking
+        // Smooth: retainEncoded → encoded only (no ScrgbRgba ~1GB).
+        // Gallery buildWorking: temp encoded for Working, not kept on frame.
+        var wantWorking = buildWorking
             && ImagingStillNormalize.FitsWorkingBudget(width, height);
         float[]? encoded = null;
-        if (wantRgba)
+        if (retainEncoded || wantWorking)
         {
             try
             {
@@ -412,32 +426,34 @@ internal static unsafe class HdrAvifDecode
                 var eg = BitConverter.ToUInt16(row, o + 2) / 65535f;
                 var eb = BitConverter.ToUInt16(row, o + 4) / 65535f;
                 var a = BitConverter.ToUInt16(row, o + 6) / 65535f;
-                HdrColor.EncodedRgbToScrgb(
-                    er, eg, eb, probe.Transfer, probe.CicpPrimaries,
-                    out var sr, out var sg, out var sb);
                 var nitsY = HdrColor.SourcePrimaryNitsY(
                     er, eg, eb, probe.Transfer, probe.CicpPrimaries);
                 maxY = Math.Max(maxY, nitsY);
                 minY = Math.Min(minY, nitsY);
                 sumY += nitsY;
-                maxScrgb = Math.Max(maxScrgb, Math.Max(sr, Math.Max(sg, sb)));
-                maxR = Math.Max(maxR, sr);
-                maxG = Math.Max(maxG, sg);
-                maxB = Math.Max(maxB, sb);
+
+                var i = ((y * width) + x) * 4;
+                if (encoded is not null)
+                {
+                    encoded[i] = er;
+                    encoded[i + 1] = eg;
+                    encoded[i + 2] = eb;
+                    encoded[i + 3] = a;
+                }
+
                 if (rgba is not null)
                 {
-                    var i = ((y * width) + x) * 4;
+                    HdrColor.EncodedRgbToScrgb(
+                        er, eg, eb, probe.Transfer, probe.CicpPrimaries,
+                        out var sr, out var sg, out var sb);
+                    maxScrgb = Math.Max(maxScrgb, Math.Max(sr, Math.Max(sg, sb)));
+                    maxR = Math.Max(maxR, sr);
+                    maxG = Math.Max(maxG, sg);
+                    maxB = Math.Max(maxB, sb);
                     rgba[i] = sr;
                     rgba[i + 1] = sg;
                     rgba[i + 2] = sb;
                     rgba[i + 3] = a;
-                    if (encoded is not null)
-                    {
-                        encoded[i] = er;
-                        encoded[i + 1] = eg;
-                        encoded[i + 2] = eb;
-                        encoded[i + 3] = a;
-                    }
                 }
             }
         }
@@ -472,10 +488,11 @@ internal static unsafe class HdrAvifDecode
             }
         }
 
+        // Drop temp encoded unless Smooth asked to retain it (saves ~1GB).
         return (rgba, maxY, (float)(sumY / count), minY, maxScrgb,
             maxScrgb <= 0 ? '\0' : GalleryPresent.PeakChannel(maxR, maxG, maxB),
             working,
             workingOpts,
-            encoded);
+            retainEncoded ? encoded : null);
     }
 }
