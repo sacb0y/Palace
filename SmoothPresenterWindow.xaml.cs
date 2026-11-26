@@ -169,18 +169,17 @@ public sealed partial class SmoothPresenterWindow : Window
             _sourcePath = sourceDir is null ? null : FindSmoothSource(sourceDir);
             if (_sourcePath is not null)
             {
-                // File sources: strip sampler not available yet for over-budget formats.
-                // Within budget → DecodePathAsync; over budget → explicit error (no silent synthetic).
-                TxtSmoothTiles.Text = "DecodePathAsync " + Path.GetFileName(_sourcePath) + "…";
-                result = await _workingDecode.DecodePathAsync(
-                    _sourcePath,
-                    SmoothSourceLoad.LoaderForPath(_sourcePath));
+                var (decoded, fatal) = await DecodeFileSourceAsync(_sourcePath);
+                result = decoded;
+                if (fatal)
+                {
+                    return;
+                }
+
                 if (result is null)
                 {
-                    // DecodeCore returns null when over budget; strip is not available for
-                    // arbitrary file formats yet — keep the explicit error (no silent synthetic).
                     TxtSmoothTiles.Text =
-                        "Working decode failed or over the 64MP float budget: " + Path.GetFileName(_sourcePath);
+                        "Working decode failed: " + Path.GetFileName(_sourcePath);
                     return;
                 }
             }
@@ -230,6 +229,91 @@ public sealed partial class SmoothPresenterWindow : Window
         }
     }
 
+    /// <summary>
+    /// Route a real file: within budget → DecodePathAsync; over-budget WIC
+    /// strip formats → streamed DecodeFileStripAsync; else explicit error.
+    /// Returns (result, fatal) where fatal means the UI already shows the error.
+    /// </summary>
+    private async Task<(SmoothWorkingDecodeResult? Result, bool Fatal)> DecodeFileSourceAsync(
+        string path)
+    {
+        if (_workingDecode is null)
+        {
+            return (null, true);
+        }
+
+        var name = Path.GetFileName(path);
+        var size = await SmoothWicStripDecode.TryGetSizeAsync(path);
+        if (size is { } s)
+        {
+            var route = SmoothWorkingDecode.ClassifyFileRoute(path, s.Width, s.Height);
+            switch (route)
+            {
+                case SmoothWorkingDecode.WorkingRoute.Strip:
+                    TxtSmoothTiles.Text =
+                        $"strip decode WIC {s.Width}x{s.Height} {name} (≥64MP)…";
+                    SmoothPresenterLog.AppendNote(
+                        Environment.GetEnvironmentVariable("PALACE_DATA_DIR"),
+                        $"strip-file begin {name} {s.Width}x{s.Height}");
+                    var peakBefore = Environment.WorkingSet;
+                    var strip = await SmoothWicStripDecode.DecodeFileStripAsync(
+                        _workingDecode, path);
+                    var peakAfter = Environment.WorkingSet;
+                    SmoothPresenterLog.AppendNote(
+                        Environment.GetEnvironmentVariable("PALACE_DATA_DIR"),
+                        $"strip-file end {name} peakPrivateBytes={Math.Max(peakBefore, peakAfter)} "
+                        + $"budgetFloatBytes={(long)s.Width * s.Height * 8}");
+                    if (strip is null)
+                    {
+                        TxtSmoothTiles.Text = "WIC strip decode failed: " + name;
+                        return (null, true);
+                    }
+
+                    return (strip, false);
+
+                case SmoothWorkingDecode.WorkingRoute.UnsupportedOverBudget:
+                    TxtSmoothTiles.Text =
+                        "Working decode strip not available for over-budget format: " + name;
+                    return (null, true);
+
+                case SmoothWorkingDecode.WorkingRoute.WithinBudget:
+                default:
+                    break;
+            }
+        }
+        else if (!SmoothWorkingDecode.IsStripCapablePath(path))
+        {
+            // Non-WIC formats: probe via full load path; DecodeCore null = over budget.
+        }
+        else
+        {
+            // Strip-capable but size probe failed — try full path; may still error.
+        }
+
+        TxtSmoothTiles.Text = "DecodePathAsync " + name + "…";
+        var result = await _workingDecode.DecodePathAsync(
+            path,
+            SmoothSourceLoad.LoaderForPath(path));
+        if (result is null)
+        {
+            // Over-budget non-strip (or decode failure).
+            if (!SmoothWorkingDecode.IsStripCapablePath(path))
+            {
+                TxtSmoothTiles.Text =
+                    "Working decode strip not available for over-budget format: " + name;
+            }
+            else
+            {
+                TxtSmoothTiles.Text =
+                    "Working decode failed or over the 64MP float budget: " + name;
+            }
+
+            return (null, true);
+        }
+
+        return (result, false);
+    }
+
     private static string? FindSmoothSource(string dataDir)
     {
         if (!Directory.Exists(dataDir))
@@ -237,7 +321,8 @@ public sealed partial class SmoothPresenterWindow : Window
             return null;
         }
 
-        foreach (var ext in new[] { "*.jxl", "*.avif", "*.exr", "*.hdr", "*.png", "*.jpg" })
+        // Prefer large PNG/JPEG strip fixtures when present under temp PALACE_DATA_DIR.
+        foreach (var ext in new[] { "*.png", "*.jpg", "*.jpeg", "*.jxl", "*.avif", "*.exr", "*.hdr", "*.bmp", "*.tif" })
         {
             foreach (var path in Directory.EnumerateFiles(dataDir, ext))
             {
@@ -768,6 +853,8 @@ public sealed partial class SmoothPresenterWindow : Window
         var factor = SmoothViewport.WheelZoomFactor(notches, fine: ctrl);
         // Only move the target — EaseZoom / ZoomAbout run on the timer (no skip).
         _targetZoom = SmoothViewport.ClampZoom(_targetZoom * factor, _fitZoom);
+        // Present-path latency (PALACE_SMOOTH_FRAME_LOG only): QPC → first Present.
+        SmoothPresenterLog.MarkWheelInput(_targetZoom);
         _panSnapApplied = false;
         e.Handled = true;
     }

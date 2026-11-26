@@ -14,6 +14,9 @@ public sealed class SmoothWorkingDecode : IDisposable
     /// <summary>Smooth-path Working budget (Geo ≥64MP). Distinct from Imaging's 16MP eager cap.</summary>
     public const long MaxSmoothWorkingPixels = 64L * 1000L * 1000L;
 
+    /// <summary>WIC / strip CopyPixels band height (rows). Peak RAM ≪ w×h×8.</summary>
+    public const int DefaultStripRows = 256;
+
     /// <summary>How to open a source given its pixel count and strip capability.</summary>
     public enum WorkingRoute
     {
@@ -24,6 +27,9 @@ public sealed class SmoothWorkingDecode : IDisposable
         /// <summary>Over budget and strip cannot handle this format — keep explicit error (no silent synthetic/downscale).</summary>
         UnsupportedOverBudget = 2
     }
+
+    /// <summary>One WICRect-style horizontal strip for streamed decode.</summary>
+    public readonly record struct StripRect(int X, int Y, int Width, int Height);
 
     /// <summary>
     /// Over-budget routing. Strip only when a sampler is available (synthetic SFW /
@@ -42,6 +48,51 @@ public sealed class SmoothWorkingDecode : IDisposable
         }
 
         return stripSamplerAvailable ? WorkingRoute.Strip : WorkingRoute.UnsupportedOverBudget;
+    }
+
+    /// <summary>
+    /// File routing: WIC-friendly stills (PNG/JPEG/BMP/TIFF) can strip when over
+    /// budget. HDR/container formats without a strip path stay explicit-error.
+    /// </summary>
+    public static bool IsStripCapablePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        var ext = Path.GetExtension(path);
+        return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".tif", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".tiff", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Classify a file by pixel size + extension strip capability.</summary>
+    public static WorkingRoute ClassifyFileRoute(string path, int width, int height) =>
+        ClassifyRoute(width, height, IsStripCapablePath(path));
+
+    /// <summary>
+    /// Horizontal strip rectangles covering the image (WICRect iteration).
+    /// Last strip may be shorter than <paramref name="stripRows"/>.
+    /// </summary>
+    public static IEnumerable<StripRect> EnumerateStripRects(
+        int width,
+        int height,
+        int stripRows = DefaultStripRows)
+    {
+        if (width < 1 || height < 1 || stripRows < 1)
+        {
+            yield break;
+        }
+
+        for (var y = 0; y < height; y += stripRows)
+        {
+            var h = Math.Min(stripRows, height - y);
+            yield return new StripRect(0, y, width, h);
+        }
     }
 
     private readonly object _gate = new();
@@ -372,6 +423,44 @@ public sealed class SmoothWorkingDecode : IDisposable
             token);
     }
 
+    /// <summary>
+    /// ≥64MP streamed path: <paramref name="fillStrip"/> copies one horizontal
+    /// band (≤ <see cref="DefaultStripRows"/> rows) of float RGBA into
+    /// <c>dest</c> (length ≥ width×rows×4). No full-image float buffer.
+    /// </summary>
+    public Task<SmoothWorkingDecodeResult?> DecodeStripToRgba16FAsync(
+        int width,
+        int height,
+        Action<int, int, float[]> fillStrip,
+        CancellationToken external = default)
+    {
+        ArgumentNullException.ThrowIfNull(fillStrip);
+        CancellationTokenSource linked;
+        int gen;
+        lock (_gate)
+        {
+            try
+            {
+                _cts?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // ignore
+            }
+
+            _cts?.Dispose();
+            _generation++;
+            gen = _generation;
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(external);
+            linked = _cts;
+        }
+
+        var token = linked.Token;
+        return Task.Run(
+            () => DecodeStripCoreFilled(width, height, fillStrip, gen, token),
+            token);
+    }
+
     private SmoothWorkingDecodeResult? DecodeCore(
         float[] sourceRgba,
         int width,
@@ -439,6 +528,38 @@ public sealed class SmoothWorkingDecode : IDisposable
         int gen,
         CancellationToken token)
     {
+        // Bridge per-pixel sampler → strip filler (synthetic / tests).
+        return DecodeStripCoreFilled(
+            width,
+            height,
+            (y0, rows, dest) =>
+            {
+                for (var row = 0; row < rows; row++)
+                {
+                    var y = y0 + row;
+                    var o = row * width * 4;
+                    for (var x = 0; x < width; x++)
+                    {
+                        var (r, g, b, a) = sample(x, y);
+                        var i = o + (x * 4);
+                        dest[i] = r;
+                        dest[i + 1] = g;
+                        dest[i + 2] = b;
+                        dest[i + 3] = a;
+                    }
+                }
+            },
+            gen,
+            token);
+    }
+
+    private SmoothWorkingDecodeResult? DecodeStripCoreFilled(
+        int width,
+        int height,
+        Action<int, int, float[]> fillStrip,
+        int gen,
+        CancellationToken token)
+    {
         token.ThrowIfCancellationRequested();
         if (width < 1 || height < 1)
         {
@@ -446,19 +567,44 @@ public sealed class SmoothWorkingDecode : IDisposable
         }
 
         // Prefer RGBA16F L0 tiles — never allocate width*height*4 floats.
+        // Peak working buffer ≈ width × max(strip, tile band) × 16 bytes.
         var (nx, ny) = SmoothTileMath.TileCounts(width, height);
         var tiles = new Dictionary<SmoothTileId, byte[]>(nx * ny);
-        var stripH = SmoothTileMath.ContentSize;
+        var stripRows = DefaultStripRows;
+        var stripBuf = new float[width * stripRows * 4];
+        var bandRows = SmoothTileMath.ContentSize + (2 * SmoothTileMath.Border);
+        var band = new float[width * bandRows * 4];
+
         for (var ty = 0; ty < ny; ty++)
         {
             token.ThrowIfCancellationRequested();
+            // Y extent from tile row ty (tx=0); X gutters are sampled per-tile below.
+            var (_, oy, _, ch) = SmoothTileMath.ContentRect(0, ty, width, height);
+            var y0 = Math.Max(0, oy - SmoothTileMath.Border);
+            var y1 = Math.Min(height, oy + Math.Max(1, ch) + SmoothTileMath.Border);
+            var needH = y1 - y0;
+            if (needH > bandRows)
+            {
+                bandRows = needH;
+                band = new float[width * bandRows * 4];
+            }
+
+            // Fill band via WICRect-sized strips — no full-image float.
+            for (var y = y0; y < y1; y += stripRows)
+            {
+                token.ThrowIfCancellationRequested();
+                var rows = Math.Min(stripRows, y1 - y);
+                fillStrip(y, rows, stripBuf);
+                var destOff = (y - y0) * width * 4;
+                var count = rows * width * 4;
+                Array.Copy(stripBuf, 0, band, destOff, count);
+            }
+
             for (var tx = 0; tx < nx; tx++)
             {
                 var id = new SmoothTileId(0, tx, ty);
-                tiles[id] = TileFromSampler(sample, width, height, tx, ty);
+                tiles[id] = TileFromBand(band, y0, width, height, tx, ty);
             }
-
-            _ = stripH;
         }
 
         lock (_gate)
@@ -470,14 +616,20 @@ public sealed class SmoothWorkingDecode : IDisposable
         }
 
         // Coarse subsample for Analyze-compatible ImageStats (Lc ≈ paper).
+        // Re-sample via thin strips so we never hold the full float frame.
         var step = Math.Max(1, (int)Math.Sqrt((width * (long)height) / 4096.0));
         float maxRgb = 0, sumY = 0;
         var n = 0;
         for (var y = 0; y < height; y += step)
         {
+            token.ThrowIfCancellationRequested();
+            fillStrip(y, 1, stripBuf);
             for (var x = 0; x < width; x += step)
             {
-                var (r, g, b, _) = sample(x, y);
+                var i = x * 4;
+                var r = stripBuf[i];
+                var g = stripBuf[i + 1];
+                var b = stripBuf[i + 2];
                 maxRgb = Math.Max(maxRgb, Math.Max(r, Math.Max(g, b)));
                 sumY += ImagingConstants.Bt2020Y(r, g, b);
                 n++;
@@ -508,8 +660,9 @@ public sealed class SmoothWorkingDecode : IDisposable
             gen);
     }
 
-    private static byte[] TileFromSampler(
-        Func<int, int, (float R, float G, float B, float A)> sample,
+    private static byte[] TileFromBand(
+        float[] band,
+        int bandOriginY,
         int width,
         int height,
         int tileX,
@@ -523,16 +676,17 @@ public sealed class SmoothWorkingDecode : IDisposable
         {
             var cy = sy - border;
             var iy = Math.Clamp(oy + cy, 0, height - 1);
+            var bandRow = iy - bandOriginY;
             for (var sx = 0; sx < slot; sx++)
             {
                 var cx = sx - border;
                 var ix = Math.Clamp(ox + cx, 0, width - 1);
-                var (r, g, b, a) = sample(ix, iy);
+                var si = ((bandRow * width) + ix) * 4;
                 var o = ((sy * slot) + sx) * 8;
-                WriteHalf(bytes, o, r);
-                WriteHalf(bytes, o + 2, g);
-                WriteHalf(bytes, o + 4, b);
-                WriteHalf(bytes, o + 6, a);
+                WriteHalf(bytes, o, band[si]);
+                WriteHalf(bytes, o + 2, band[si + 1]);
+                WriteHalf(bytes, o + 4, band[si + 2]);
+                WriteHalf(bytes, o + 6, band[si + 3]);
             }
         }
 

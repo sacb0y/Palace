@@ -21,6 +21,8 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private readonly SmoothTileCrossfade _crossfade = new();
     private nint _host;
     private nint _swapChain;
+    private float _matrixScaleX = 1f;
+    private float _matrixScaleY = 1f;
     private bool _disposed;
     private string _status = "idle";
     private string _tileStatus = "tiles idle";
@@ -463,6 +465,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return false;
         }
 
+        ApplyCompositionScaleTransform(scaleX, scaleY);
         _life.MarkAttached(w, h);
         _status = $"attached {w}x{h} {SmoothPresenterNative.GetBackend(_host)}";
         return Tick();
@@ -525,6 +528,10 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             _status = $"dpi {_life.DpiScaleX:F2}x{_life.DpiScaleY:F2}";
         }
 
+        // Inverse CompositionScale on SwapChainPanel — same as HdrSwapchainPresenter.
+        // Re-apply on every dpi change even when physical size is unchanged.
+        ApplyCompositionScaleTransform(scaleX, scaleY);
+
         if (dipW < 2 || dipH < 2)
         {
             return;
@@ -548,6 +555,9 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             _status = $"resize failed ({resize}): {SmoothPresenterNative.LastError(_host)}";
             return;
         }
+
+        // ResizeBuffers invalidates the matrix — re-apply (MSDN / HDR present path).
+        ApplyCompositionScaleTransform(scaleX, scaleY);
 
         // Image-scoped pyramid — ResizeBuffers + present only. Never StartBackgroundPyramid.
         // Caller (SizeChanged) recomputes fit/transform for the new panel size.
@@ -667,6 +677,11 @@ internal sealed class SmoothDiligentPresenter : IDisposable
                 LastStats = stats;
                 var note = SmoothPresenterNative.LastError(_host);
                 SmoothPresenterLog.AppendStats(_logDataDir, stats, note);
+                if (_viewportArmed)
+                {
+                    SmoothPresenterLog.TryCompleteInputLatency(_logDataDir, _zoom);
+                }
+
                 _status =
                     $"frame {stats.FrameIndex} {stats.Width}x{stats.Height} " +
                     $"total={stats.TotalMs:F2}ms wait={stats.WaitMs:F2} render={stats.RenderMs:F2} present={stats.PresentMs:F2}" +
@@ -1005,6 +1020,111 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         DestroyHost();
         _life.MarkDisposed();
     }
+
+
+    /// <summary>
+    /// Invert CompositionScale so a physical-pixel buffer is not scaled again
+    /// by XAML (DIP×scale buffer without this transform crops Fit at 150% DPI).
+    /// Mirrors <c>HdrSwapchainPresenter.ApplyCompositionScaleTransform</c>.
+    /// </summary>
+    private void ApplyCompositionScaleTransform(float scaleX, float scaleY)
+    {
+        if (_swapChain == 0 || scaleX <= 0 || scaleY <= 0)
+        {
+            return;
+        }
+
+        _matrixScaleX = scaleX;
+        _matrixScaleY = scaleY;
+        var matrix = new DxgiMatrix3x2F
+        {
+            _11 = 1f / scaleX,
+            _12 = 0,
+            _21 = 0,
+            _22 = 1f / scaleY,
+            _31 = 0,
+            _32 = 0
+        };
+        var hr = CallSetMatrixTransform(_swapChain, ref matrix);
+        SmoothPresenterLog.AppendNote(
+            _logDataDir,
+            $"SetMatrixTransform hr=0x{unchecked((uint)hr):X8} scale={scaleX:0.###}x{scaleY:0.###}");
+    }
+
+    private const int ENoInterface = unchecked((int)0x80004002);
+    private static readonly Guid IidDxgiSwapChain2 = new("a8be2ac4-199f-4946-b331-79599fb98de7");
+
+    private static int CallSetMatrixTransform(nint swapChain, ref DxgiMatrix3x2F matrix)
+    {
+        var swap2 = TryQuery(swapChain, IidDxgiSwapChain2);
+        if (swap2 == 0)
+        {
+            return ENoInterface;
+        }
+
+        try
+        {
+            var fn = Marshal.GetDelegateForFunctionPointer<SetMatrixTransformDelegate>(
+                Vtbl(swap2, GalleryPresent.DxgiSwapChain2SetMatrixTransformVtbl));
+            return fn(swap2, ref matrix);
+        }
+        finally
+        {
+            Release(ref swap2);
+        }
+    }
+
+    private static nint TryQuery(nint unk, Guid iid)
+    {
+        if (unk == 0)
+        {
+            return 0;
+        }
+
+        try
+        {
+            var fn = Marshal.GetDelegateForFunctionPointer<QueryInterfaceDelegate>(Vtbl(unk, 0));
+            var hr = fn(unk, ref iid, out var ppv);
+            return hr < 0 ? 0 : ppv;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static void Release(ref nint unk)
+    {
+        if (unk == 0)
+        {
+            return;
+        }
+
+        var fn = Marshal.GetDelegateForFunctionPointer<ReleaseDelegate>(Vtbl(unk, 2));
+        fn(unk);
+        unk = 0;
+    }
+
+    private static nint Vtbl(nint unk, int index)
+    {
+        var table = Marshal.ReadIntPtr(unk);
+        return Marshal.ReadIntPtr(table, index * nint.Size);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct DxgiMatrix3x2F
+    {
+        public float _11;
+        public float _12;
+        public float _21;
+        public float _22;
+        public float _31;
+        public float _32;
+    }
+
+    private delegate int QueryInterfaceDelegate(nint self, ref Guid iid, out nint ppv);
+    private delegate uint ReleaseDelegate(nint self);
+    private delegate int SetMatrixTransformDelegate(nint self, ref DxgiMatrix3x2F matrix);
 
     private void HandleDeviceLost()
     {

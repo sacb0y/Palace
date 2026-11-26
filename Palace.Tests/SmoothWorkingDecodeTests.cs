@@ -183,6 +183,64 @@ public sealed class SmoothWorkingDecodeTests
     }
 
     [Fact]
+    public void ClassifyFileRoute_PngStrip_Vs_ExrExplicitError()
+    {
+        Assert.True(SmoothWorkingDecode.IsStripCapablePath(@"C:\tmp\checker-10000x7000.png"));
+        Assert.False(SmoothWorkingDecode.IsStripCapablePath(@"C:\tmp\huge.exr"));
+        Assert.Equal(
+            SmoothWorkingDecode.WorkingRoute.Strip,
+            SmoothWorkingDecode.ClassifyFileRoute(@"C:\tmp\a.png", 10000, 7000));
+        Assert.Equal(
+            SmoothWorkingDecode.WorkingRoute.WithinBudget,
+            SmoothWorkingDecode.ClassifyFileRoute(@"C:\tmp\a.png", 4000, 3000));
+        Assert.Equal(
+            SmoothWorkingDecode.WorkingRoute.UnsupportedOverBudget,
+            SmoothWorkingDecode.ClassifyFileRoute(@"C:\tmp\huge.exr", 10000, 7000));
+    }
+
+    [Fact]
+    public void EnumerateStripRects_CoversImage_LastShorter()
+    {
+        var rects = SmoothWorkingDecode.EnumerateStripRects(1000, 700, stripRows: 256).ToList();
+        Assert.Equal(3, rects.Count);
+        Assert.Equal(new SmoothWorkingDecode.StripRect(0, 0, 1000, 256), rects[0]);
+        Assert.Equal(new SmoothWorkingDecode.StripRect(0, 256, 1000, 256), rects[1]);
+        Assert.Equal(new SmoothWorkingDecode.StripRect(0, 512, 1000, 188), rects[2]);
+        Assert.Equal(700, rects.Sum(r => r.Height));
+        Assert.Empty(SmoothWorkingDecode.EnumerateStripRects(0, 10));
+        Assert.Empty(SmoothWorkingDecode.EnumerateStripRects(10, 10, stripRows: 0));
+    }
+
+    [Fact]
+    public async Task DecodeStrip_FillStrip_NoFullFloatBuffer()
+    {
+        const int w = 600;
+        const int h = 400;
+        using var decode = new SmoothWorkingDecode();
+        var strips = 0;
+        var result = await decode.DecodeStripToRgba16FAsync(
+            w,
+            h,
+            (y0, rows, dest) =>
+            {
+                strips++;
+                Assert.True(rows <= SmoothWorkingDecode.DefaultStripRows);
+                Assert.True(dest.Length >= w * rows * 4);
+                for (var i = 0; i < w * rows; i++)
+                {
+                    dest[i * 4] = 0.5f;
+                    dest[i * 4 + 1] = 0.25f;
+                    dest[i * 4 + 2] = 0.125f;
+                    dest[i * 4 + 3] = 1f;
+                }
+            });
+        Assert.NotNull(result);
+        Assert.False(result!.HasFloatWorking);
+        Assert.True(strips >= 1);
+        Assert.NotEmpty(result.Level0Tiles);
+    }
+
+    [Fact]
     public async Task DecodeStrip_ProducesRgba16FTiles_WithoutFullFloat()
     {
         const int w = 600;
