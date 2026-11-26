@@ -44,25 +44,16 @@ public static class LibraryColumnLayout
     public const double ShellNavCompactPaneWidthDip = 48;
 
     /// <summary>
-    /// Below this <b>window client</b> width (DIP), New folder / Undo / Add to room
-    /// move into the top toolbar overflow menu. Laptop script sizes are client DIP
-    /// (not Library grid width — that already excludes the nav pane).
+    /// Extra DIP required before un-parking a face button (expand). Shrink parks
+    /// as soon as desired &gt; available so Add to room is not clipped mid-label.
     /// </summary>
-    public const double LibraryToolbarOverflowBelowDip = 920;
+    public const double LibraryToolbarOverflowHysteresisDip = 24;
 
     /// <summary>
-    /// Same compact overflow as <see cref="LibraryToolbarOverflowBelowDip"/>, but
-    /// when the face <c>Delete rejected (N)</c> button is visible. That extra chip
-    /// clips Add to room under the Preview toggle around ~1024 client DIP.
+    /// Park priority length for <see cref="ResolveLibraryToolbarOverflow"/>:
+    /// Add to room → Undo → New folder → Organize → Review.
     /// </summary>
-    public const double LibraryToolbarOverflowWithDeleteRejectedBelowDip = 1100;
-
-    /// <summary>
-    /// Below this <b>window client</b> width (DIP), also park Organize / Review in
-    /// More. Face buttons show at ≥800 client DIP; comparing Library grid width
-    /// instead kept them collapsed (grid ≈ client − 248 when the pane is open).
-    /// </summary>
-    public const double LibraryToolbarTightBelowDip = 800;
+    public const int LibraryToolbarOptionalCount = 5;
 
     /// <summary>
     /// Horizontal page padding on <c>GrdLibraryColumns</c>.
@@ -73,24 +64,136 @@ public static class LibraryColumnLayout
     /// <summary>Left (or right) pad alone — half of <see cref="PagePaddingHorizontalDip"/>.</summary>
     public const double PagePaddingEdgeDip = 12;
 
-    /// <summary>True when Organize / Review should leave the face toolbar.</summary>
-    public static bool IsLibraryToolbarTight(double windowClientDip) =>
-        windowClientDip < LibraryToolbarTightBelowDip;
+    /// <summary>
+    /// Measurement-driven Library toolbar overflow. Parks optional face buttons
+    /// into More in fixed priority until always-on + remaining ≤ available.
+    /// <paramref name="orderedButtonWidths"/> is park-first order (index 0 parks
+    /// first): Add to room → Undo → New folder → Organize → Review. Each entry is
+    /// that button's contribution when visible (width + leading StackPanel spacing).
+    /// <paramref name="alwaysOnWidth"/> is Add folder / Scan / Delete rejected (when
+    /// on the face) — never parked. Delete rejected stays on the face by design.
+    /// </summary>
+    /// <returns>
+    /// Parallel to <paramref name="orderedButtonWidths"/>: <c>true</c> = park in More.
+    /// </returns>
+    public static bool[] ResolveLibraryToolbarOverflow(
+        double available,
+        IReadOnlyList<double> orderedButtonWidths,
+        double alwaysOnWidth) =>
+        ResolveLibraryToolbarOverflow(
+            available,
+            orderedButtonWidths,
+            alwaysOnWidth,
+            moreButtonWidth: 0,
+            previous: null,
+            expandHysteresisDip: 0);
 
     /// <summary>
-    /// Compact overflow threshold for the current face toolbar. Raises when
-    /// Delete rejected is on the face so Add to room is not clipped mid-label.
+    /// Same as <see cref="ResolveLibraryToolbarOverflow(double,IReadOnlyList{double},double)"/>
+    /// plus More-button contribution and expand hysteresis so resize does not flicker.
     /// </summary>
-    public static double LibraryToolbarCompactBelowDip(bool deleteRejectedVisible) =>
-        deleteRejectedVisible
-            ? LibraryToolbarOverflowWithDeleteRejectedBelowDip
-            : LibraryToolbarOverflowBelowDip;
+    public static bool[] ResolveLibraryToolbarOverflow(
+        double available,
+        IReadOnlyList<double> orderedButtonWidths,
+        double alwaysOnWidth,
+        double moreButtonWidth,
+        bool[]? previous,
+        double expandHysteresisDip)
+    {
+        var n = orderedButtonWidths?.Count ?? 0;
+        if (n == 0)
+        {
+            return [];
+        }
 
-    /// <summary>True when New folder / Undo / Add to room move into More.</summary>
-    public static bool IsLibraryToolbarCompact(
-        double windowClientDip,
-        bool deleteRejectedVisible = false) =>
-        windowClientDip < LibraryToolbarCompactBelowDip(deleteRejectedVisible);
+        var widths = orderedButtonWidths!;
+        var always = double.IsFinite(alwaysOnWidth) && alwaysOnWidth > 0
+            ? alwaysOnWidth
+            : 0;
+        var more = double.IsFinite(moreButtonWidth) && moreButtonWidth > 0
+            ? moreButtonWidth
+            : 0;
+        var avail = double.IsFinite(available) && available > 0 ? available : 0;
+        var hyst = double.IsFinite(expandHysteresisDip) && expandHysteresisDip > 0
+            ? expandHysteresisDip
+            : 0;
+
+        // Shrink: park from the front until the face fits (More counted when any parked).
+        var parked = ParkUntilFits(avail, widths, always, more);
+
+        if (previous is null || previous.Length != n || hyst <= 0)
+        {
+            return parked;
+        }
+
+        // Expand only when the wider face still fits under available − hysteresis.
+        var prevCount = CountParked(previous);
+        var nextCount = CountParked(parked);
+        if (nextCount >= prevCount)
+        {
+            return parked;
+        }
+
+        var withHyst = ParkUntilFits(Math.Max(0, avail - hyst), widths, always, more);
+        return CountParked(withHyst) < prevCount ? withHyst : previous;
+    }
+
+    private static bool[] ParkUntilFits(
+        double available,
+        IReadOnlyList<double> widths,
+        double alwaysOnWidth,
+        double moreButtonWidth)
+    {
+        var n = widths.Count;
+        var parked = new bool[n];
+        var parkCount = 0;
+        while (parkCount < n
+               && FaceWidth(widths, alwaysOnWidth, moreButtonWidth, parkCount) > available)
+        {
+            parked[parkCount] = true;
+            parkCount++;
+        }
+
+        return parked;
+    }
+
+    private static double FaceWidth(
+        IReadOnlyList<double> widths,
+        double alwaysOnWidth,
+        double moreButtonWidth,
+        int parkCount)
+    {
+        var sum = alwaysOnWidth;
+        for (var i = parkCount; i < widths.Count; i++)
+        {
+            var w = widths[i];
+            if (double.IsFinite(w) && w > 0)
+            {
+                sum += w;
+            }
+        }
+
+        if (parkCount > 0 && moreButtonWidth > 0)
+        {
+            sum += moreButtonWidth;
+        }
+
+        return sum;
+    }
+
+    private static int CountParked(bool[] parked)
+    {
+        var n = 0;
+        for (var i = 0; i < parked.Length; i++)
+        {
+            if (parked[i])
+            {
+                n++;
+            }
+        }
+
+        return n;
+    }
 
     /// <summary>
     /// Width the shell <c>NavigationView</c> currently occupies from the window

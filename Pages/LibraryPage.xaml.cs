@@ -78,6 +78,11 @@ public sealed partial class LibraryPage : Page
     /// <summary>Preview reducer + 0.3.12 toggle / overlay / pin.</summary>
     private PreviewPaneState _previewPane = PreviewPane.Initial;
     private PaneMode _previewPaneMode = PaneMode.Hidden;
+    /// <summary>
+    /// Last measurement-driven Library toolbar park set (Add to room → … → Review)
+    /// for expand hysteresis in <see cref="UpdateLibraryToolbarOverflow"/>.
+    /// </summary>
+    private bool[]? _libraryToolbarParked;
     private NavigationView? _shellNav;
     private Frame? _shellContentFrame;
     private bool _shellNavHooked;
@@ -247,11 +252,11 @@ public sealed partial class LibraryPage : Page
                 _suppressBrowseChrome = false;
             }
 
-            // Delete rejected face chip changes compact overflow (~1024 clip).
+            // Delete rejected face chip changes always-on width — re-measure overflow.
             if (e.PropertyName is nameof(LibraryViewModel.RejectedCountInView)
                 or nameof(LibraryViewModel.IsTagBrowse))
             {
-                UpdateLibraryToolbarOverflow(ResolveWindowClientDip());
+                UpdateLibraryToolbarOverflow();
             }
         };
         Loaded += async (_, _) =>
@@ -380,6 +385,7 @@ public sealed partial class LibraryPage : Page
             }
         };
         SizeChanged += (_, _) => RefreshLibraryLayout();
+        GrdLibraryToolbarHost.SizeChanged += (_, _) => UpdateLibraryToolbarOverflow();
     }
 
     /// <summary>
@@ -790,7 +796,7 @@ public sealed partial class LibraryPage : Page
                     nextPane,
                     layout);
                 ApplyLibraryColumnLayout(effective);
-                UpdateLibraryToolbarOverflow(windowDip);
+                UpdateLibraryToolbarOverflow();
             }
             while (_libraryLayoutRefreshQueued);
         }
@@ -1228,38 +1234,143 @@ public sealed partial class LibraryPage : Page
     }
 
     /// <summary>
-    /// Top toolbar spans all columns — at narrow widths move New folder / Undo /
-    /// Add to room into the overflow menu so buttons are not clipped mid-element.
-    /// Same available-width signal as Preview OnWidth (window client DIP).
-    /// When Delete rejected is on the face, compact starts earlier (~1100) so
-    /// Add to room is not clipped under the Preview toggle around ~1024.
+    /// Top toolbar spans all columns — measurement-driven overflow parks optional
+    /// face buttons into More (Add to room → Undo → New folder → Organize → Review)
+    /// until the face fits left of the Preview toggle. Delete rejected stays on
+    /// the face. Re-runs on toolbar SizeChanged, RejectedCountInView / IsTagBrowse,
+    /// Preview layout, and nav pane open/close (via <see cref="RefreshLibraryLayout"/>).
     /// </summary>
-    private void UpdateLibraryToolbarOverflow(double windowClientDip)
+    private void UpdateLibraryToolbarOverflow()
     {
-        var windowDip = windowClientDip;
-        if (windowDip < MosaicLayoutWidth.MinUsable)
+        var host = GrdLibraryToolbarHost.ActualWidth;
+        if (!double.IsFinite(host) || host < 1)
         {
-            windowDip = ResolveWindowClientDip();
+            return;
         }
 
-        var deleteRejected = ViewModel.ShowDeleteRejectedToolbar;
-        var compact = LibraryColumnLayout.IsLibraryToolbarCompact(windowDip, deleteRejected);
-        var tight = LibraryColumnLayout.IsLibraryToolbarTight(windowDip);
-        BtnNewFolder.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        BtnUndo.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        BtnAddToRoom.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        // At ~770 DIP client (1155 px @ 150%), Organize/Review + More were cut —
-        // park them in … so Add folder / Scan stay fully on-screen.
-        BtnOrganize.Visibility = tight ? Visibility.Collapsed : Visibility.Visible;
-        BtnReview.Visibility = tight ? Visibility.Collapsed : Visibility.Visible;
-        // Menu twins only when face is hidden (800–920 would otherwise duplicate).
-        var tightMenu = tight ? Visibility.Visible : Visibility.Collapsed;
-        MnuToolbarOrganize.Visibility = tightMenu;
-        MnuToolbarReview.Visibility = tightMenu;
-        SepToolbarTight.Visibility = tightMenu;
-        BtnLibraryToolbarMore.Visibility = compact || tight
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        var preview = TglPreviewPane.DesiredSize.Width;
+        if (preview < 1)
+        {
+            TglPreviewPane.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            preview = TglPreviewPane.DesiredSize.Width;
+        }
+
+        if (preview < 1 && TglPreviewPane.ActualWidth > 0)
+        {
+            preview = TglPreviewPane.ActualWidth;
+        }
+
+        var previewMargin = TglPreviewPane.Margin.Left + TglPreviewPane.Margin.Right;
+        var available = Math.Max(0, host - preview - previewMargin);
+
+        // Reveal every optional so Measure sees full face width; More stays out of
+        // the always-on + optional sum (caller adds it when any button parks).
+        BtnAddToRoom.Visibility = Visibility.Visible;
+        BtnUndo.Visibility = Visibility.Visible;
+        BtnNewFolder.Visibility = Visibility.Visible;
+        BtnOrganize.Visibility = Visibility.Visible;
+        BtnReview.Visibility = Visibility.Visible;
+        BtnLibraryToolbarMore.Visibility = Visibility.Collapsed;
+
+        var infinite = new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity);
+        SpnLibraryToolbarFace.Measure(infinite);
+        var spacing = SpnLibraryToolbarFace.Spacing;
+
+        static double ButtonFaceWidth(FrameworkElement button, Windows.Foundation.Size infiniteSize, double leadingSpacing)
+        {
+            button.Measure(infiniteSize);
+            var w = button.DesiredSize.Width;
+            if (!double.IsFinite(w) || w <= 0)
+            {
+                return 0;
+            }
+
+            return w + leadingSpacing;
+        }
+
+        // Always-on: Add folder, Scan, Delete rejected (when visible) — never park.
+        var alwaysOn = 0.0;
+        var alwaysCount = 0;
+        void AddAlwaysOn(FrameworkElement button, bool include)
+        {
+            if (!include)
+            {
+                return;
+            }
+
+            button.Measure(infinite);
+            var w = button.DesiredSize.Width;
+            if (!double.IsFinite(w) || w <= 0)
+            {
+                return;
+            }
+
+            if (alwaysCount > 0)
+            {
+                alwaysOn += spacing;
+            }
+
+            alwaysOn += w;
+            alwaysCount++;
+        }
+
+        // Face order starts Add folder / Scan; Delete rejected sits after Review in
+        // XAML but stays on the face — count it in always-on when visible.
+        AddAlwaysOn(BtnAddFolder, include: true);
+        AddAlwaysOn(BtnScan, include: true);
+        AddAlwaysOn(BtnDeleteRejected, ViewModel.ShowDeleteRejectedToolbar);
+
+        // Park priority (not XAML order): Add to room → Undo → New folder → Organize → Review.
+        var optional = new[]
+        {
+            ButtonFaceWidth(BtnAddToRoom, infinite, spacing),
+            ButtonFaceWidth(BtnUndo, infinite, spacing),
+            ButtonFaceWidth(BtnNewFolder, infinite, spacing),
+            ButtonFaceWidth(BtnOrganize, infinite, spacing),
+            ButtonFaceWidth(BtnReview, infinite, spacing),
+        };
+
+        BtnLibraryToolbarMore.Measure(infinite);
+        var moreWidth = BtnLibraryToolbarMore.DesiredSize.Width;
+        if (!double.IsFinite(moreWidth) || moreWidth < 0)
+        {
+            moreWidth = 0;
+        }
+
+        if (moreWidth > 0)
+        {
+            moreWidth += spacing;
+        }
+
+        var parked = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+            available,
+            optional,
+            alwaysOn,
+            moreWidth,
+            _libraryToolbarParked,
+            LibraryColumnLayout.LibraryToolbarOverflowHysteresisDip);
+        _libraryToolbarParked = parked;
+
+        BtnAddToRoom.Visibility = parked[0] ? Visibility.Collapsed : Visibility.Visible;
+        BtnUndo.Visibility = parked[1] ? Visibility.Collapsed : Visibility.Visible;
+        BtnNewFolder.Visibility = parked[2] ? Visibility.Collapsed : Visibility.Visible;
+        BtnOrganize.Visibility = parked[3] ? Visibility.Collapsed : Visibility.Visible;
+        BtnReview.Visibility = parked[4] ? Visibility.Collapsed : Visibility.Visible;
+
+        MnuToolbarAddToRoom.Visibility = parked[0] ? Visibility.Visible : Visibility.Collapsed;
+        MnuToolbarUndo.Visibility = parked[1] ? Visibility.Visible : Visibility.Collapsed;
+        MnuToolbarNewFolder.Visibility = parked[2] ? Visibility.Visible : Visibility.Collapsed;
+        MnuToolbarOrganize.Visibility = parked[3] ? Visibility.Visible : Visibility.Collapsed;
+        MnuToolbarReview.Visibility = parked[4] ? Visibility.Visible : Visibility.Collapsed;
+
+        var anyParked = parked[0] || parked[1] || parked[2] || parked[3] || parked[4];
+        // Separator between Organize/Review twins and New folder/Undo/Add to room twins.
+        SepToolbarTight.Visibility =
+            (parked[3] || parked[4]) && (parked[0] || parked[1] || parked[2])
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+        BtnLibraryToolbarMore.Visibility = anyParked ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>Toolbar overflow using the visible mosaic column (not raw ItemsView width).</summary>

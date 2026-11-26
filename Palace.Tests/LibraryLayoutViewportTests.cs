@@ -74,60 +74,98 @@ public sealed class LibraryLayoutViewportTests
             0.01);
     }
 
-    [Theory]
-    [InlineData(933, false)]
-    [InlineData(867, false)]
-    [InlineData(833, false)]
-    [InlineData(800, false)]
-    [InlineData(799, true)]
-    [InlineData(770, true)]
-    public void ToolbarTight_UsesWindowClientDip(double clientDip, bool expectTight)
+    /// <summary>
+    /// Pure park helper: boundaries from widths, not magic client-DIP constants.
+    /// Order is Add to room → Undo → New folder → Organize → Review.
+    /// </summary>
+    [Fact]
+    public void ResolveLibraryToolbarOverflow_ParksInPriorityUntilFits()
     {
-        Assert.Equal(expectTight, LibraryColumnLayout.IsLibraryToolbarTight(clientDip));
+        // always-on 200 + five 100-wide optionals = 700 when all on face.
+        const double alwaysOn = 200;
+        double[] widths = [100, 100, 100, 100, 100];
 
-        // Library grid width alone stays under 800 at these laptop sizes — that
-        // was why Organize/Review stayed in More. Window client is the contract.
-        var content = LibraryColumnLayout.ContentWidthFromClientDip(clientDip);
-        Assert.True(content < LibraryColumnLayout.LibraryToolbarTightBelowDip);
+        var roomy = LibraryColumnLayout.ResolveLibraryToolbarOverflow(700, widths, alwaysOn);
+        Assert.Equal(5, roomy.Length);
+        Assert.All(roomy, p => Assert.False(p));
+
+        // One DIP short of full face → park Add to room only.
+        var oneShort = LibraryColumnLayout.ResolveLibraryToolbarOverflow(699, widths, alwaysOn);
+        Assert.True(oneShort[0]);
+        Assert.False(oneShort[1]);
+        Assert.False(oneShort[2]);
+        Assert.False(oneShort[3]);
+        Assert.False(oneShort[4]);
+
+        // Exactly always-on + last two (Organize+Review) = 400 → park first three.
+        var mid = LibraryColumnLayout.ResolveLibraryToolbarOverflow(400, widths, alwaysOn);
+        Assert.True(mid[0] && mid[1] && mid[2]);
+        Assert.False(mid[3]);
+        Assert.False(mid[4]);
+
+        // Only always-on fits → park all five.
+        var tight = LibraryColumnLayout.ResolveLibraryToolbarOverflow(alwaysOn, widths, alwaysOn);
+        Assert.All(tight, p => Assert.True(p));
+
+        // Under always-on still parks everything (caller keeps Delete rejected on face).
+        var squeeze = LibraryColumnLayout.ResolveLibraryToolbarOverflow(alwaysOn - 1, widths, alwaysOn);
+        Assert.All(squeeze, p => Assert.True(p));
     }
 
-    [Theory]
-    [InlineData(1000, false)]
-    [InlineData(920, false)]
-    [InlineData(919, true)]
-    [InlineData(770, true)]
-    public void ToolbarCompact_UsesWindowClientDip(double clientDip, bool expectCompact) =>
-        Assert.Equal(expectCompact, LibraryColumnLayout.IsLibraryToolbarCompact(clientDip));
+    [Fact]
+    public void ResolveLibraryToolbarOverflow_DeleteRejectedWidensAlwaysOn_ParksEarlier()
+    {
+        // Same optional widths; Delete rejected on the face raises always-on so
+        // Add to room parks at a width that previously fit.
+        double[] widths = [120, 80, 100, 90, 90]; // sum 480
+        const double alwaysWithout = 220;         // full face 700
+        const double alwaysWithDelete = 220 + 140; // full face 840
 
-    /// <summary>
-    /// Delete rejected face chip needs a higher compact floor so Add to room is
-    /// not clipped under Preview around ~1024 client DIP (Wimbly / P-201).
-    /// </summary>
-    [Theory]
-    [InlineData(1100, false)]
-    [InlineData(1099, true)]
-    [InlineData(1024, true)]
-    [InlineData(1000, true)]
-    [InlineData(920, true)]
-    public void ToolbarCompact_WithDeleteRejected_RaisesThreshold(
-        double clientDip,
-        bool expectCompact) =>
-        Assert.Equal(
-            expectCompact,
-            LibraryColumnLayout.IsLibraryToolbarCompact(clientDip, deleteRejectedVisible: true));
+        // 750 fits full face without Delete rejected (700), but with Delete
+        // rejected (840) parks Add to room only (840 − 120 = 720 ≤ 750).
+        const double available = 750;
+        var without = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+            available, widths, alwaysWithout);
+        Assert.All(without, p => Assert.False(p));
+
+        var withDelete = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+            available, widths, alwaysWithDelete);
+        Assert.True(withDelete[0]);
+        Assert.False(withDelete[1]);
+        Assert.False(withDelete[2]);
+    }
 
     [Fact]
-    public void ToolbarCompactBelowDip_TracksDeleteRejectedFace()
+    public void ResolveLibraryToolbarOverflow_Hysteresis_BlocksFlickerOnExpand()
     {
-        Assert.Equal(
-            LibraryColumnLayout.LibraryToolbarOverflowBelowDip,
-            LibraryColumnLayout.LibraryToolbarCompactBelowDip(deleteRejectedVisible: false));
-        Assert.Equal(
-            LibraryColumnLayout.LibraryToolbarOverflowWithDeleteRejectedBelowDip,
-            LibraryColumnLayout.LibraryToolbarCompactBelowDip(deleteRejectedVisible: true));
-        // Without Delete rejected, 1024 still shows Add to room on the face.
-        Assert.False(LibraryColumnLayout.IsLibraryToolbarCompact(1024));
-        Assert.True(LibraryColumnLayout.IsLibraryToolbarCompact(1024, deleteRejectedVisible: true));
+        const double alwaysOn = 200;
+        double[] widths = [100, 100, 100, 100, 100];
+        var previous = LibraryColumnLayout.ResolveLibraryToolbarOverflow(500, widths, alwaysOn);
+        // 500 → face needs park of first two (200+300=500 exact → 0 parked? 
+        // FaceWidth(0)=700, park until fits: park0 → 600, park1 → 500. So 2 parked.
+        Assert.True(previous[0] && previous[1]);
+        Assert.False(previous[2]);
+
+        // Grow by less than hysteresis — stay parked (no flicker).
+        var still = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+            500 + LibraryColumnLayout.LibraryToolbarOverflowHysteresisDip - 1,
+            widths,
+            alwaysOn,
+            moreButtonWidth: 0,
+            previous,
+            LibraryColumnLayout.LibraryToolbarOverflowHysteresisDip);
+        Assert.True(still[0] && still[1]);
+        Assert.False(still[2]);
+
+        // Grow by full face slack + hysteresis → unpark.
+        var expanded = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+            700 + LibraryColumnLayout.LibraryToolbarOverflowHysteresisDip,
+            widths,
+            alwaysOn,
+            moreButtonWidth: 0,
+            previous,
+            LibraryColumnLayout.LibraryToolbarOverflowHysteresisDip);
+        Assert.All(expanded, p => Assert.False(p));
     }
 
     [Fact]
@@ -215,20 +253,11 @@ public sealed class LibraryLayoutViewportTests
             <= clientDip - LibraryColumnLayout.PagePaddingEdgeDip + 0.01);
     }
 
-    [Fact]
-    public void ToolbarTightThreshold_BelowMinWindowClient()
-    {
-        Assert.True(
-            LibraryColumnLayout.IsLibraryToolbarTight(LibraryColumnLayout.MinWindowWidthDip));
-        Assert.True(
-            LibraryColumnLayout.LibraryToolbarTightBelowDip
-            < LibraryColumnLayout.LibraryToolbarOverflowBelowDip);
-    }
-
     /// <summary>
     /// Isiac hand repro via PreviewPane reducer: start narrow → widen past Preview →
-    /// shrink below (Preview hides) → widen again. Pack + both overflow thresholds
-    /// track every step (available width, not grid ActualWidth).
+    /// shrink below (Preview hides) → widen again. Pack tracks every step
+    /// (available width, not grid ActualWidth). Toolbar overflow is measurement-
+    /// driven separately (<see cref="ResolveLibraryToolbarOverflow_ParksInPriorityUntilFits"/>).
     /// </summary>
     [Fact]
     public void PreviewPane_NarrowWidenPreviewNarrowWiden_TracksEachStep()
@@ -250,7 +279,6 @@ public sealed class LibraryLayoutViewportTests
         Assert.True(
             LibraryColumnLayout.MosaicPackRightEdgeClientDip(narrowClient)
             <= narrowClient - LibraryColumnLayout.PagePaddingEdgeDip + 0.01);
-        Assert.True(LibraryColumnLayout.IsLibraryToolbarTight(narrowClient));
 
         s = PreviewPane.OnWidth(s, wideContent);
         var w1 = PreviewPane.Effective(s, wideContent);
@@ -260,17 +288,14 @@ public sealed class LibraryLayoutViewportTests
         Assert.True(
             LibraryColumnLayout.MosaicPackRightEdgeClientDip(wideClient)
             <= wideClient - LibraryColumnLayout.PagePaddingEdgeDip + 0.01);
-        Assert.False(LibraryColumnLayout.IsLibraryToolbarTight(wideClient));
-        Assert.False(LibraryColumnLayout.IsLibraryToolbarCompact(wideClient));
 
-        // Shrink below hide threshold — Preview hides; toolbar tight again.
+        // Shrink below hide threshold — Preview hides.
         s = PreviewPane.OnWidth(s, narrowContent);
         var n2 = PreviewPane.Effective(s, narrowContent);
         Assert.Equal(PaneMode.Hidden, n2.Mode);
         Assert.Equal(0, n2.Widths.Preview);
         Assert.Equal(n1.Widths.Mosaic, n2.Widths.Mosaic, 0.01);
         Assert.Equal(packN1, MosaicLayoutWidth.ApplyViewportGutter(n2.Widths.Mosaic), 0.01);
-        Assert.True(LibraryColumnLayout.IsLibraryToolbarTight(narrowClient));
 
         // Widen again — tracking continues.
         s = PreviewPane.OnWidth(s, wideContent);
@@ -278,8 +303,6 @@ public sealed class LibraryLayoutViewportTests
         Assert.Equal(PaneMode.Docked, w2.Mode);
         Assert.Equal(w1.Widths.Mosaic, w2.Widths.Mosaic, 0.01);
         Assert.Equal(w1.Widths.Preview, w2.Widths.Preview, 0.01);
-        Assert.False(LibraryColumnLayout.IsLibraryToolbarTight(867));
-        Assert.False(LibraryColumnLayout.IsLibraryToolbarTight(933));
     }
 
     [Fact]

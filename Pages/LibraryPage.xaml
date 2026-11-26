@@ -78,15 +78,17 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <!-- Narrow widths: New folder / Undo / Add to room move into BtnLibraryToolbarMore.
-                 When Delete rejected is visible, compact starts earlier (~1100 client DIP)
-                 so Add to room is not clipped under Preview. Preview toggle stays far right. -->
+            <!-- Overflow is measurement-driven (UpdateLibraryToolbarOverflow): park Add to
+                 room → Undo → New folder → Organize / Review into More until the face fits
+                 left of the Preview toggle. Delete rejected stays on the face. -->
             <Grid>
             <StackPanel
+                x:Name="SpnLibraryToolbarFace"
                 HorizontalAlignment="Left"
                 Orientation="Horizontal"
                 Spacing="8">
                 <Button
+                    x:Name="BtnAddFolder"
                     AutomationProperties.AutomationId="BtnAddFolder"
                     AutomationProperties.Name="Add folder"
                     Command="{x:Bind ViewModel.AddFolderCommand}">
@@ -96,6 +98,7 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="BtnScan"
                     AutomationProperties.AutomationId="BtnScan"
                     AutomationProperties.Name="Scan"
                     Command="{x:Bind ViewModel.ScanCommand}"
