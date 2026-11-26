@@ -28,6 +28,8 @@ public sealed class SmoothTileSession
     public SmoothCpuTileCache Cpu { get; } = new();
     public SmoothGpuTileLru Lru { get; private set; }
     public long FirstCoarseFrameMs { get; private set; }
+    /// <summary>GPU mip generations completed for this image pyramid (survives device recreate).</summary>
+    public int RecordedGpuMipCount { get; private set; }
     public int CoarseTileCount { get; private set; }
     public string WorkingFormat { get; } = SmoothTileWorkingSpace.GpuFormat;
     public long AvailableVramBytes { get; private set; }
@@ -81,7 +83,11 @@ public sealed class SmoothTileSession
         }
 
         return Task.Run(
-            () => BuildPyramidCore(cancellationToken, gpuMip, afterLevel),
+            () =>
+            {
+                ResetRecordedGpuMips();
+                return BuildPyramidCore(cancellationToken, gpuMip, afterLevel);
+            },
             cancellationToken);
     }
 
@@ -94,6 +100,10 @@ public sealed class SmoothTileSession
 
     /// <summary>True after <see cref="BuildPyramidCore"/> / Working build finished once.</summary>
     public bool PyramidBuilt => FirstCoarseFrameMs > 0;
+
+    public void NoteGpuMipCompleted() => RecordedGpuMipCount++;
+
+    public void ResetRecordedGpuMips() => RecordedGpuMipCount = 0;
 
     public string StatusLine() => StatusLine(gpuEvidenceOn: null);
 
@@ -143,6 +153,7 @@ public sealed class SmoothTileSession
             {
                 try
                 {
+                    ResetRecordedGpuMips();
                     return BuildPyramidCore(cancellationToken, gpuMip, afterLevel);
                 }
                 finally

@@ -166,6 +166,23 @@ public sealed class SmoothWorkingDecodeTests
     }
 
     [Fact]
+    public void ClassifyRoute_OverBudget_StripVsExplicitError()
+    {
+        Assert.Equal(
+            SmoothWorkingDecode.WorkingRoute.WithinBudget,
+            SmoothWorkingDecode.ClassifyRoute(8000, 8000, stripSamplerAvailable: false));
+        Assert.Equal(
+            SmoothWorkingDecode.WorkingRoute.Strip,
+            SmoothWorkingDecode.ClassifyRoute(10000, 7000, stripSamplerAvailable: true));
+        Assert.Equal(
+            SmoothWorkingDecode.WorkingRoute.UnsupportedOverBudget,
+            SmoothWorkingDecode.ClassifyRoute(10000, 7000, stripSamplerAvailable: false));
+        Assert.Equal(
+            SmoothWorkingDecode.WorkingRoute.UnsupportedOverBudget,
+            SmoothWorkingDecode.ClassifyRoute(0, 0, stripSamplerAvailable: true));
+    }
+
+    [Fact]
     public async Task DecodeStrip_ProducesRgba16FTiles_WithoutFullFloat()
     {
         const int w = 600;

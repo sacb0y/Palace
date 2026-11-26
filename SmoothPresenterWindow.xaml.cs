@@ -14,9 +14,9 @@ using VirtualKeyModifiers = Windows.System.VirtualKeyModifiers;
 namespace Palace;
 
 /// <summary>
-/// Experimental Diligent SwapChainPanel host for Smooth Viewer V2.
-/// Primary path: Working decode (not procedural). Opened from Settings when
-/// the smooth presenter toggle is on (default off).
+/// Experimental Diligent SwapChainPanel host for Smooth Viewer V3 (input feel +
+/// streamed decode). Primary path: Working decode (not procedural). Opened from
+/// Settings when the smooth presenter toggle is on (default off).
 /// </summary>
 public sealed partial class SmoothPresenterWindow : Window
 {
@@ -40,10 +40,12 @@ public sealed partial class SmoothPresenterWindow : Window
     private float _targetZoom = 1f;
     private float _fitZoom = 1f;
     private bool _panning;
+    private bool _pinching;
     /// <summary>Last zoom-about / pan point in device pixels (not DIP).</summary>
     private float _lastPanX;
     private float _lastPanY;
     private bool _transformDirty;
+    private bool _panSnapApplied = true;
     /// <summary>Last panel size used for fit/pan (device px) — SizeChanged preserve.</summary>
     private float _panelDevW = 1f;
     private float _panelDevH = 1f;
@@ -51,6 +53,7 @@ public sealed partial class SmoothPresenterWindow : Window
     private int _storedW = 1;
     private int _storedH = 1;
     private string? _sourcePath;
+    private long _lastEaseQpc;
 
     public SmoothPresenterWindow()
     {
@@ -166,13 +169,16 @@ public sealed partial class SmoothPresenterWindow : Window
             _sourcePath = sourceDir is null ? null : FindSmoothSource(sourceDir);
             if (_sourcePath is not null)
             {
+                // File sources: strip sampler not available yet for over-budget formats.
+                // Within budget → DecodePathAsync; over budget → explicit error (no silent synthetic).
                 TxtSmoothTiles.Text = "DecodePathAsync " + Path.GetFileName(_sourcePath) + "…";
                 result = await _workingDecode.DecodePathAsync(
                     _sourcePath,
                     SmoothSourceLoad.LoaderForPath(_sourcePath));
                 if (result is null)
                 {
-                    // Do not silently swap in synthetic data (e.g. >64MP real file).
+                    // DecodeCore returns null when over budget; strip is not available for
+                    // arbitrary file formats yet — keep the explicit error (no silent synthetic).
                     TxtSmoothTiles.Text =
                         "Working decode failed or over the 64MP float budget: " + Path.GetFileName(_sourcePath);
                     return;
@@ -181,9 +187,16 @@ public sealed partial class SmoothPresenterWindow : Window
 
             if (result is null)
             {
-                // No source file: in-memory synthetic ≥64MP, strip/tile RGBA16F L0 (no box downscale).
+                // No source file: synthetic SFW ≥64MP strip under temp PALACE_DATA_DIR only.
                 const int w = 10000;
                 const int h = 7000; // 70 MP
+                var route = SmoothWorkingDecode.ClassifyRoute(w, h, stripSamplerAvailable: true);
+                if (route != SmoothWorkingDecode.WorkingRoute.Strip)
+                {
+                    TxtSmoothTiles.Text = "Synthetic strip routing failed";
+                    return;
+                }
+
                 TxtSmoothTiles.Text = $"strip decode synthetic {w}x{h} (≥64MP)…";
                 result = await _workingDecode.DecodeStripToRgba16FAsync(
                     w,
@@ -192,7 +205,10 @@ public sealed partial class SmoothPresenterWindow : Window
                     {
                         var u = x / (float)Math.Max(1, w - 1);
                         var v = y / (float)Math.Max(1, h - 1);
-                        return (0.15f + 0.85f * u, 0.1f + 0.5f * v, 0.2f + 0.4f * (1f - u) * v, 1f);
+                        // Checker-ish SFW procedural (no personal assets).
+                        var cell = ((x / 64) + (y / 64)) & 1;
+                        var baseC = cell == 0 ? 0.2f : 0.55f;
+                        return (baseC + 0.3f * u, baseC * 0.8f + 0.2f * v, 0.25f + 0.4f * (1f - u) * v, 1f);
                     });
             }
 
@@ -608,6 +624,7 @@ public sealed partial class SmoothPresenterWindow : Window
             newPanelW,
             newPanelH,
             _zoom,
+            _targetZoom,
             _tx,
             _ty,
             _fitZoom,
@@ -655,19 +672,35 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void TickTransformEase()
     {
-        if (MathF.Abs(_targetZoom - _zoom) < 1e-4f)
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var freq = System.Diagnostics.Stopwatch.Frequency;
+        float dtSeconds;
+        if (_lastEaseQpc == 0)
+        {
+            dtSeconds = 1f / 60f;
+        }
+        else
+        {
+            dtSeconds = (float)((now - _lastEaseQpc) / (double)freq);
+        }
+
+        _lastEaseQpc = now;
+        dtSeconds = SmoothViewport.ClampFrameDt(dtSeconds);
+
+        if (SmoothViewport.IsEaseSettled(_zoom, _targetZoom))
         {
             if (_zoom != _targetZoom)
             {
-                // Snap at rest.
                 _zoom = _targetZoom;
                 _transformDirty = true;
             }
 
+            TrySnapPanAtRest();
             return;
         }
 
-        var eased = SmoothViewport.EaseZoom(_zoom, _targetZoom, dtSeconds: 1f / 60f);
+        _panSnapApplied = false;
+        var eased = SmoothViewport.EaseZoom(_zoom, _targetZoom, dtSeconds);
         if (MathF.Abs(eased - _targetZoom) < 1e-3f)
         {
             eased = _targetZoom;
@@ -680,6 +713,33 @@ public sealed partial class SmoothPresenterWindow : Window
         _tx = about.Tx;
         _ty = about.Ty;
         _transformDirty = true;
+    }
+
+    /// <summary>
+    /// Round pan T to whole device px only when input is at rest (ease settled,
+    /// no active pan/pinch). Allowed at any zoom including z≥4 at rest.
+    /// </summary>
+    private void TrySnapPanAtRest()
+    {
+        if (_panSnapApplied || _panning || _pinching)
+        {
+            return;
+        }
+
+        if (!SmoothViewport.IsEaseSettled(_zoom, _targetZoom))
+        {
+            return;
+        }
+
+        var (stx, sty) = SmoothViewport.SnapPanTranslation(_tx, _ty);
+        if (stx != _tx || sty != _ty)
+        {
+            _tx = stx;
+            _ty = sty;
+            _transformDirty = true;
+        }
+
+        _panSnapApplied = true;
     }
 
     private void ScpSmooth_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
@@ -696,14 +756,69 @@ public sealed partial class SmoothPresenterWindow : Window
         _lastPanY = (float)(pt.Position.Y * sy);
 
         var delta = pt.Properties.MouseWheelDelta;
+        // WinUI: 120 per notch. Negative = zoom out.
+        var notches = delta == 0 ? 0 : delta / 120;
+        if (notches == 0 && delta != 0)
+        {
+            notches = delta > 0 ? 1 : -1;
+        }
+
         var ctrl = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             .HasFlag(CoreVirtualKeyStates.Down);
-        // Ctrl+wheel = finer zoom steps; plain wheel = larger.
-        var factor = ctrl
-            ? (delta > 0 ? 1.05f : 1f / 1.05f)
-            : (delta > 0 ? 1.12f : 1f / 1.12f);
+        var factor = SmoothViewport.WheelZoomFactor(notches, fine: ctrl);
         // Only move the target — EaseZoom / ZoomAbout run on the timer (no skip).
         _targetZoom = SmoothViewport.ClampZoom(_targetZoom * factor, _fitZoom);
+        _panSnapApplied = false;
+        e.Handled = true;
+    }
+
+    private void ScpSmooth_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
+    {
+        _pinching = true;
+        _panSnapApplied = false;
+        e.Handled = true;
+    }
+
+    private void ScpSmooth_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    {
+        if (_presenter is null || !_hostStarted)
+        {
+            return;
+        }
+
+        var scale = e.Delta.Scale;
+        if (MathF.Abs(scale - 1f) < 1e-6f)
+        {
+            return;
+        }
+
+        var (_, _, sx, sy) = PanelMetrics();
+        var cx = (float)(e.Position.X * sx);
+        var cy = (float)(e.Position.Y * sy);
+        _lastPanX = cx;
+        _lastPanY = cy;
+        // Pinch 1:1 — apply immediately, no ease; same clamp + centroid anchor.
+        var about = SmoothViewport.PinchZoomAbout(
+            _zoom, _tx, _ty, scale, cx, cy, _fitZoom);
+        _zoom = about.Zoom;
+        _targetZoom = about.Zoom;
+        _tx = about.Tx;
+        _ty = about.Ty;
+        _transformDirty = true;
+        _panSnapApplied = false;
+        e.Handled = true;
+    }
+
+    private void ScpSmooth_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    {
+        _pinching = false;
+        TrySnapPanAtRest();
+        e.Handled = true;
+    }
+
+    private void ScpSmooth_ManipulationInertiaStarting(object sender, ManipulationInertiaStartingRoutedEventArgs e)
+    {
+        // No inertial zoom — pinch is 1:1 and ends on finger lift.
         e.Handled = true;
     }
 
@@ -716,6 +831,7 @@ public sealed partial class SmoothPresenterWindow : Window
         }
 
         _panning = true;
+        _panSnapApplied = false;
         var (_, _, sx, sy) = PanelMetrics();
         _lastPanX = (float)(pt.Position.X * sx);
         _lastPanY = (float)(pt.Position.Y * sy);
@@ -751,7 +867,7 @@ public sealed partial class SmoothPresenterWindow : Window
 
         _panning = false;
         ScpSmooth.ReleasePointerCapture(e.Pointer);
-        // Do not snap _zoom here — TickTransformEase snaps at rest after ease.
+        TrySnapPanAtRest();
         e.Handled = true;
     }
 

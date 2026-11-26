@@ -26,6 +26,12 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private string _tileStatus = "tiles idle";
     private SmoothTileSession? _session;
     private int _gpuMipCount;
+    private long _lastTileStatusQpc;
+    private int _lastTileStatusLevel = int.MinValue;
+    private int _lastTileStatusVisible = int.MinValue;
+    private int _lastTileStatusResident = int.MinValue;
+    private int _lastTileStatusPending = int.MinValue;
+    private int _lastTileStatusUploads = int.MinValue;
     private float _readbackMaxAbsError;
     private int _readbackOverUlpCount;
     private int _readbackCompared;
@@ -123,11 +129,15 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         _session = session;
+        // New device: counter starts at 0. When the CPU pyramid already finished
+        // (device-lost rearm), restore the recorded mip count so evidence is not
+        // stuck at gpuMips=0 — tiles re-upload from CPU; mips were built for this image.
         _gpuMipCount = 0;
         _streamedUploadsSinceLoad = 0;
         _readbackMaxAbsError = 0;
         _readbackOverUlpCount = 0;
         _readbackCompared = 0;
+        _lastTileStatusQpc = 0;
 
         if (SmoothPresenterNative.QueryVideoMemory(_host, out _, out _, out var available) ==
             SmoothPresenterNative.StatusCode.Ok)
@@ -158,9 +168,21 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return false;
         }
 
-        _tileStatus =
-            $"pool={session.PoolCapacity} vramAvail={session.AvailableVramBytes} " +
-            $"mipCS={(SmoothPresenterNative.TileMipReady(_host) ? "yes" : "no")}";
+        if (session.PyramidBuilt && session.RecordedGpuMipCount > 0)
+        {
+            _gpuMipCount = session.RecordedGpuMipCount;
+            _tileStatus =
+                $"pool={session.PoolCapacity} vramAvail={session.AvailableVramBytes} " +
+                $"mipCS={(SmoothPresenterNative.TileMipReady(_host) ? "yes" : "no")} " +
+                $"gpuMips={_gpuMipCount} (restored after recreate)";
+        }
+        else
+        {
+            _tileStatus =
+                $"pool={session.PoolCapacity} vramAvail={session.AvailableVramBytes} " +
+                $"mipCS={(SmoothPresenterNative.TileMipReady(_host) ? "yes" : "no")}";
+        }
+
         return true;
     }
 
@@ -202,6 +224,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         _gpuMipCount++;
+        _session?.NoteGpuMipCompleted();
 
         if (!GpuEvidenceEnabled)
         {
@@ -711,7 +734,8 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return;
         }
 
-        /* Visible count for LevelForZoom before parent-level stream overwrites scratch. */
+        // Snapshot visible count for the LevelForZoom level before parent-level
+        // StreamVisibleLevel may rewrite _visibleScratch for L+1 underlays.
         var visibleCount = _visibleScratch.Count;
 
         var totalUploads = uploads;
@@ -748,11 +772,8 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             _underlayScratch,
             _drawScratch);
 
-        /* Live TILES segment — FinalizeV1CoarseUploads alone goes stale after zoom/stream. */
-        _tileStatus =
-            $"level={level} visible={visibleCount} resident={_session.Lru.ResidentCount} " +
-            $"streamPending={_streamEnsurePending.Count} streamed={_streamedUploadsSinceLoad} " +
-            $"uploads={_lastUploads} gpuMips={_gpuMipCount}";
+        // Live TILES segment — throttle string build (Debug always; Release ≤10 Hz or on change).
+        MaybeUpdateTileStatus(level, visibleCount);
 
         var drawCount = _drawScratch.Count;
         if (_instanceArray.Length < drawCount)
@@ -1030,6 +1051,47 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         {
             // logging must not block start
         }
+    }
+
+    private void MaybeUpdateTileStatus(int level, int visibleCount)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        var resident = _session.Lru.ResidentCount;
+        var pending = _streamEnsurePending.Count;
+        var changed =
+            level != _lastTileStatusLevel
+            || visibleCount != _lastTileStatusVisible
+            || resident != _lastTileStatusResident
+            || pending != _lastTileStatusPending
+            || _lastUploads != _lastTileStatusUploads;
+
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var freq = System.Diagnostics.Stopwatch.Frequency;
+        var due = _lastTileStatusQpc == 0
+            || ((now - _lastTileStatusQpc) * 1000 / freq) >= 100;
+
+#if !DEBUG
+        // Release: rebuild string only on change or ≤10 Hz heartbeat.
+        if (!changed && !due)
+        {
+            return;
+        }
+#endif
+
+        _lastTileStatusQpc = now;
+        _lastTileStatusLevel = level;
+        _lastTileStatusVisible = visibleCount;
+        _lastTileStatusResident = resident;
+        _lastTileStatusPending = pending;
+        _lastTileStatusUploads = _lastUploads;
+        _tileStatus =
+            $"level={level} visible={visibleCount} resident={resident} " +
+            $"streamPending={pending} streamed={_streamedUploadsSinceLoad} " +
+            $"uploads={_lastUploads} gpuMips={_gpuMipCount}";
     }
 
     private void DestroyHost()

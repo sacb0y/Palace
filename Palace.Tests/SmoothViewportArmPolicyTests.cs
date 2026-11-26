@@ -77,7 +77,7 @@ public sealed class SmoothViewportArmPolicyTests
         var next = SmoothViewportArmPolicy.AfterPanelResize(
             oldPanelW: 800, oldPanelH: 600,
             newPanelW: 400, newPanelH: 300,
-            zoom: fit.Zoom, tx: fit.Tx, ty: fit.Ty,
+            zoom: fit.Zoom, targetZoom: fit.Zoom, tx: fit.Tx, ty: fit.Ty,
             previousFitZoom: fit.FitZoom,
             orientedWidth: 100, orientedHeight: 50);
         var expect = SmoothViewportArmPolicy.FitCentered(400, 300, 100, 50);
@@ -85,6 +85,41 @@ public sealed class SmoothViewportArmPolicyTests
         Assert.Equal(expect.Tx, next.Tx, precision: 3);
         Assert.Equal(expect.Ty, next.Ty, precision: 3);
         Assert.True(SmoothViewportArmPolicy.IsAtFit(next.Zoom, next.FitZoom));
+    }
+
+    [Fact]
+    public void AfterPanelResize_TargetAtFit_RefitsEvenIfLiveZoomDrifted()
+    {
+        var fit = SmoothViewportArmPolicy.FitCentered(1920, 1080, 10000, 6400);
+        Assert.True(SmoothViewportArmPolicy.IsAtFit(fit.Zoom, fit.FitZoom));
+        // Live zoom clearly off fit (would keep mid-zoom without target check); target still at fit.
+        var drifted = fit.Zoom * 2.5f;
+        Assert.False(SmoothViewportArmPolicy.IsAtFit(drifted, fit.FitZoom));
+        var next = SmoothViewportArmPolicy.AfterPanelResize(
+            oldPanelW: 1920, oldPanelH: 1080,
+            newPanelW: 1080, newPanelH: 585,
+            zoom: drifted, targetZoom: fit.Zoom, tx: fit.Tx, ty: fit.Ty,
+            previousFitZoom: fit.FitZoom,
+            orientedWidth: 10000, orientedHeight: 6400);
+        var expect = SmoothViewportArmPolicy.FitCentered(1080, 585, 10000, 6400);
+        Assert.Equal(expect.Zoom, next.Zoom, precision: 4);
+        Assert.True(SmoothViewportArmPolicy.IsAtFit(next.Zoom, next.FitZoom));
+    }
+
+    [Fact]
+    public void FitCentered_OddPanel_MarginsWithinOnePx()
+    {
+        var fit = SmoothViewportArmPolicy.FitCentered(
+            panelW: 801, panelH: 601, orientedWidth: 100, orientedHeight: 50);
+        Assert.True(fit.MaxMarginDeltaX <= 1f + 1e-4f, $"dx={fit.MaxMarginDeltaX}");
+        Assert.True(fit.MaxMarginDeltaY <= 1f + 1e-4f, $"dy={fit.MaxMarginDeltaY}");
+        // Usable with top inset (status overlay): still symmetric in usable rect.
+        var inset = SmoothViewportArmPolicy.FitCentered(
+            panelW: 801, panelH: 601, orientedWidth: 100, orientedHeight: 50,
+            insetLeft: 0, insetTop: 48, insetRight: 0, insetBottom: 0);
+        Assert.True(inset.MaxMarginDeltaX <= 1f + 1e-4f);
+        Assert.True(inset.MaxMarginDeltaY <= 1f + 1e-4f);
+        Assert.True(inset.Ty >= 48f - 1e-3f);
     }
 
     [Fact]
@@ -99,7 +134,7 @@ public sealed class SmoothViewportArmPolicyTests
         var next = SmoothViewportArmPolicy.AfterPanelResize(
             oldPanelW: 800, oldPanelH: 600,
             newPanelW: 1000, newPanelH: 700,
-            zoom: zoomed.Zoom, tx: zoomed.Tx, ty: zoomed.Ty,
+            zoom: zoomed.Zoom, targetZoom: zoomed.Zoom, tx: zoomed.Tx, ty: zoomed.Ty,
             previousFitZoom: fit.FitZoom,
             orientedWidth: 100, orientedHeight: 50);
 

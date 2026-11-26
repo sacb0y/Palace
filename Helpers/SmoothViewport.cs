@@ -16,6 +16,10 @@ public static class SmoothViewport
     public const float CrossfadeMsMin = 80f;
     public const float CrossfadeMsMax = 120f;
     public const float CrossfadeMsDefault = 100f;
+    /// <summary>Geo wheel: each notch multiplies zoom by 2^0.25 (Ctrl = half notch).</summary>
+    public const float WheelNotchLog2 = 0.25f;
+    /// <summary>Max frame dt for ease / snap (seconds) — clamps hitch overshoot.</summary>
+    public const float MaxFrameDtSeconds = 0.05f;
 
     /// <summary>
     /// GPU viewport path sizes the swap chain to the panel and applies zoom as
@@ -162,6 +166,35 @@ public static class SmoothViewport
     public static float ClampZoom(float zoom, float fitZoom) =>
         Math.Clamp(zoom, Math.Min(fitZoom, 1f), MaxZoom);
 
+    /// <summary>Clamp real frame dt so a hitch cannot overshoot ease/snap.</summary>
+    public static float ClampFrameDt(float dtSeconds) =>
+        Math.Clamp(dtSeconds, 0f, MaxFrameDtSeconds);
+
+    /// <summary>
+    /// Wheel notch factor: <c>2^(notches * 0.25)</c>. Negative notches zoom out.
+    /// Ctrl uses half-notch steps (<paramref name="fine"/>).
+    /// </summary>
+    public static float WheelZoomFactor(int notches, bool fine = false)
+    {
+        if (notches == 0)
+        {
+            return 1f;
+        }
+
+        var step = fine ? WheelNotchLog2 * 0.5f : WheelNotchLog2;
+        return MathF.Pow(2f, notches * step);
+    }
+
+    /// <summary>
+    /// Round pan T to whole device px. Call only when input is at rest
+    /// (ease settled, no active pan/pinch). Safe at any zoom including z≥4 at rest.
+    /// </summary>
+    public static (float Tx, float Ty) SnapPanTranslation(float tx, float ty) =>
+        (MathF.Round(tx), MathF.Round(ty));
+
+    public static bool IsEaseSettled(float zoom, float targetZoom, float epsilon = 1e-4f) =>
+        MathF.Abs(zoom - targetZoom) < epsilon;
+
     public static float FitZoom(float panelW, float panelH, float imgW, float imgH)
     {
         if (panelW <= 0 || panelH <= 0 || imgW <= 0 || imgH <= 0)
@@ -191,6 +224,27 @@ public static class SmoothViewport
     }
 
     /// <summary>
+    /// Pinch / touchpad: apply scale 1:1 about centroid (no ease). Same clamp as wheel.
+    /// </summary>
+    public static (float Zoom, float Tx, float Ty) PinchZoomAbout(
+        float zoom,
+        float tx,
+        float ty,
+        float scaleDelta,
+        float centroidX,
+        float centroidY,
+        float fitZoom)
+    {
+        if (scaleDelta <= 1e-12f)
+        {
+            return (ClampZoom(zoom, fitZoom), tx, ty);
+        }
+
+        var next = ClampZoom(zoom * scaleDelta, fitZoom);
+        return ZoomAbout(zoom, tx, ty, next, centroidX, centroidY);
+    }
+
+    /// <summary>
     /// Wheel ease toward target: <c>z += (zt - z) * (1 - exp(-dt/tau))</c>, tau≈70 ms.
     /// </summary>
     public static float EaseZoom(float current, float target, float dtSeconds, float tau = 0.07f)
@@ -200,7 +254,8 @@ public static class SmoothViewport
             return target;
         }
 
-        var a = 1f - MathF.Exp(-dtSeconds / tau);
+        var dt = ClampFrameDt(dtSeconds);
+        var a = 1f - MathF.Exp(-dt / tau);
         return current + ((target - current) * a);
     }
 

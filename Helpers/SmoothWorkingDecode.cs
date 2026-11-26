@@ -14,6 +14,36 @@ public sealed class SmoothWorkingDecode : IDisposable
     /// <summary>Smooth-path Working budget (Geo ≥64MP). Distinct from Imaging's 16MP eager cap.</summary>
     public const long MaxSmoothWorkingPixels = 64L * 1000L * 1000L;
 
+    /// <summary>How to open a source given its pixel count and strip capability.</summary>
+    public enum WorkingRoute
+    {
+        /// <summary>Fits float Working budget — DecodeAsync / DecodePathAsync.</summary>
+        WithinBudget = 0,
+        /// <summary>Over budget and a strip/tile sampler is available — DecodeStripToRgba16FAsync.</summary>
+        Strip = 1,
+        /// <summary>Over budget and strip cannot handle this format — keep explicit error (no silent synthetic/downscale).</summary>
+        UnsupportedOverBudget = 2
+    }
+
+    /// <summary>
+    /// Over-budget routing. Strip only when a sampler is available (synthetic SFW /
+    /// strip-capable decode). Otherwise callers must show the existing error state.
+    /// </summary>
+    public static WorkingRoute ClassifyRoute(int width, int height, bool stripSamplerAvailable)
+    {
+        if (width < 1 || height < 1)
+        {
+            return WorkingRoute.UnsupportedOverBudget;
+        }
+
+        if (FitsSmoothWorkingBudget(width, height))
+        {
+            return WorkingRoute.WithinBudget;
+        }
+
+        return stripSamplerAvailable ? WorkingRoute.Strip : WorkingRoute.UnsupportedOverBudget;
+    }
+
     private readonly object _gate = new();
     private CancellationTokenSource? _cts;
     private int _generation;

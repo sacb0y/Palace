@@ -6,7 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="Palace Smooth Presenter (V2 viewport)">
+    Title="Palace Smooth Presenter (V3 input)">
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -26,20 +26,21 @@
                 x:Name="TxtSmoothTiles"
                 AutomationProperties.AutomationId="TxtSmoothTiles"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="V2 Working decode: idle"
+                Text="V3 Working decode: idle"
                 TextWrapping="WrapWholeWords" />
             <TextBlock
                 x:Name="TxtSmoothHint"
                 AutomationProperties.AutomationId="TxtSmoothHint"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="V2: DecodePathAsync / ≥64MP strip · wheel/Ctrl+wheel/pan · R/Shift+R rotate · ZoomAbout+EaseZoom (full feel = V3)"
+                Text="V3: strip ≥64MP · wheel notches+ease · pinch 1:1 · pan snap at rest · R/Shift+R"
                 TextWrapping="WrapWholeWords" />
         </StackPanel>
         <SwapChainPanel
             x:Name="ScpSmooth"
             Grid.Row="1"
             AutomationProperties.AutomationId="ScpSmooth"
+            ManipulationMode="Scale"
             CompositionScaleChanged="ScpSmooth_CompositionScaleChanged"
             SizeChanged="ScpSmooth_SizeChanged"
             PointerWheelChanged="ScpSmooth_PointerWheelChanged"
@@ -48,6 +49,10 @@
             PointerReleased="ScpSmooth_PointerReleased"
             PointerCanceled="ScpSmooth_PointerReleased"
             PointerCaptureLost="ScpSmooth_PointerReleased"
+            ManipulationStarted="ScpSmooth_ManipulationStarted"
+            ManipulationDelta="ScpSmooth_ManipulationDelta"
+            ManipulationCompleted="ScpSmooth_ManipulationCompleted"
+            ManipulationInertiaStarting="ScpSmooth_ManipulationInertiaStarting"
             KeyDown="ScpSmooth_KeyDown" />
     </Grid>
 </Window>

@@ -94,4 +94,41 @@ public sealed class SmoothViewportTests
         Assert.Equal(32f, SmoothViewport.ClampZoom(64f, fitZoom: 0.2f));
         Assert.Equal(0.2f, SmoothViewport.ClampZoom(0.01f, fitZoom: 0.2f));
     }
+
+    [Fact]
+    public void WheelZoomFactor_GeoNotches()
+    {
+        Assert.Equal(1f, SmoothViewport.WheelZoomFactor(0));
+        Assert.Equal(MathF.Pow(2f, 0.25f), SmoothViewport.WheelZoomFactor(1), precision: 5);
+        Assert.Equal(MathF.Pow(2f, -0.25f), SmoothViewport.WheelZoomFactor(-1), precision: 5);
+        Assert.Equal(MathF.Pow(2f, 0.125f), SmoothViewport.WheelZoomFactor(1, fine: true), precision: 5);
+    }
+
+    [Fact]
+    public void ClampFrameDt_CapsAt50Ms()
+    {
+        Assert.Equal(0f, SmoothViewport.ClampFrameDt(-1f));
+        Assert.Equal(0.05f, SmoothViewport.ClampFrameDt(1f));
+        Assert.Equal(0.016f, SmoothViewport.ClampFrameDt(0.016f), precision: 5);
+    }
+
+    [Fact]
+    public void SnapPanTranslation_RoundsDevicePx()
+    {
+        var (tx, ty) = SmoothViewport.SnapPanTranslation(10.4f, -3.6f);
+        Assert.Equal(10f, tx);
+        Assert.Equal(-4f, ty);
+    }
+
+    [Fact]
+    public void PinchZoomAbout_ClampsAndAnchorsCentroid()
+    {
+        var (z, tx, ty) = SmoothViewport.PinchZoomAbout(
+            zoom: 1f, tx: 0f, ty: 0f, scaleDelta: 64f, centroidX: 100f, centroidY: 50f, fitZoom: 0.2f);
+        Assert.Equal(32f, z); // max clamp
+        // Cursor still maps to same image point after clamp.
+        var about = SmoothViewport.ZoomAbout(1f, 0f, 0f, 32f, 100f, 50f);
+        Assert.Equal(about.Tx, tx, precision: 3);
+        Assert.Equal(about.Ty, ty, precision: 3);
+    }
 }
