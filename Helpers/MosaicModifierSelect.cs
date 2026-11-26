@@ -24,6 +24,14 @@ public static class MosaicModifierSelect
     /// </summary>
     public static bool CtrlClickWantsSelected(bool modelSelected) => !modelSelected;
 
+    /// <summary>
+    /// Modifier suppress must outlive PointerPressed into the matching
+    /// PointerReleased / CaptureLost (one dispatcher turn is too early —
+    /// ItemsView Multiple toggles on Released).
+    /// </summary>
+    public static bool EndsModifierSuppress(uint? suppressPointerId, uint endedPointerId) =>
+        suppressPointerId is uint id && id == endedPointerId;
+
     /// <summary>Shift alone (no Ctrl) ranges from anchor without moving it.</summary>
     public static bool RangesFromAnchor(bool ctrl, bool shift) => shift && !ctrl;
 

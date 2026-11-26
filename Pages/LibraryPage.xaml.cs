@@ -1686,7 +1686,7 @@ public sealed partial class LibraryPage : Page
         DisarmCanDrag();
         SyncMouseCanDragArm(e);
 
-        if (_modifierSuppressPointerId is uint modId && e.Pointer.PointerId == modId)
+        if (MosaicModifierSelect.EndsModifierSuppress(_modifierSuppressPointerId, e.Pointer.PointerId))
         {
             _modifierSuppressPointerId = null;
             // After ItemsView's Released Multiple toggle: re-stamp from model, then lift suppress.
@@ -1736,7 +1736,7 @@ public sealed partial class LibraryPage : Page
     {
         DisarmCanDrag();
 
-        if (_modifierSuppressPointerId is uint modId && e.Pointer.PointerId == modId)
+        if (MosaicModifierSelect.EndsModifierSuppress(_modifierSuppressPointerId, e.Pointer.PointerId))
         {
             _modifierSuppressPointerId = null;
             DispatcherQueue.TryEnqueue(() =>

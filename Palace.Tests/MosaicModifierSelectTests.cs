@@ -51,6 +51,9 @@ public sealed class MosaicModifierSelectTests
         Assert.True(MosaicModifierSelect.AddsRangeWithCtrlShiftArrow(shift: true, ctrl: true, 40));
         Assert.True(MosaicModifierSelect.CtrlClickWantsSelected(false));
         Assert.False(MosaicModifierSelect.CtrlClickWantsSelected(true));
+        Assert.True(MosaicModifierSelect.EndsModifierSuppress(42u, 42u));
+        Assert.False(MosaicModifierSelect.EndsModifierSuppress(42u, 7u));
+        Assert.False(MosaicModifierSelect.EndsModifierSuppress(null, 42u));
     }
 
     [Fact]
