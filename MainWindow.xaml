@@ -9,9 +9,12 @@
     Title="Palace"
     mc:Ignorable="d">
     <Grid Background="Transparent">
+        <!-- IsHitTestVisible=False: wallpaper must not steal pointer hits (Wimbly #211).
+             Automation Name stays for optional winapp discovery; ui-tests soft-skip. -->
         <Grid
             x:Name="GrdShellBackdrop"
             AutomationProperties.AutomationId="GrdShellBackdrop"
+            AutomationProperties.Name="Shell wallpaper"
             IsHitTestVisible="False">
             <Border x:Name="BrdShellGradient">
                 <Border.Background>

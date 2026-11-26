@@ -167,13 +167,29 @@ public sealed partial class TagChip : UserControl
     /// <summary>
     /// Desired size is the chip face only — star is HA=Right in the ChipWrap
     /// trailing gap and must not widen chips or change wrap (Wimbly 0.3.108).
+    /// Stretch HA still fills the face+gap arrange slot. Measure GrdRoot once and
+    /// take width from BrdChip (GrdFace is Left). Never measure GrdFace out of band
+    /// then remeasure root at that width - that squeezed the face against the star
+    /// and clipped labels (Wimbly #211). Infinity Stretch may leave BrdChip at 0;
+    /// remeasure root at Width=Infinity once, then floor via TagChipMeasure.FaceWidth.
     /// </summary>
     protected override Size MeasureOverride(Size availableSize)
     {
         GrdRoot.Measure(availableSize);
-        return new Size(
-            BrdChip.DesiredSize.Width,
-            Math.Max(BrdChip.DesiredSize.Height, TagChipVisual.HeightDip));
+
+        var chipW = BrdChip.DesiredSize.Width;
+        if (TagChipMeasure.NeedsUnconstrainedRemeasure(availableSize.Width, chipW))
+        {
+            var h = ChipWrap.IsFinitePositive(availableSize.Height)
+                ? availableSize.Height
+                : double.PositiveInfinity;
+            GrdRoot.Measure(new Size(double.PositiveInfinity, h));
+            chipW = BrdChip.DesiredSize.Width;
+        }
+
+        var faceW = TagChipMeasure.FaceWidth(availableSize.Width, chipW);
+        var faceH = Math.Max(BrdChip.DesiredSize.Height, TagChipVisual.HeightDip);
+        return new Size(faceW, faceH);
     }
 
     public string Label
