@@ -336,6 +336,64 @@ public sealed class SmoothWorkingDecodeTests
     }
 
     [Fact]
+    public void ResolveDisplayTarget_Sdr_IgnoresSdrWhite80_PeakNormalizedOne()
+    {
+        // Wimbly #212: displayIsHdr==false + CCD SdrWhiteLevel 80 must NOT
+        // pick Sdr80 (PeakNormalized 80/203 → absolute red ~145 from 220).
+        var d = SmoothToneGpu.ResolveDisplayTarget(
+            displayIsHdr: false,
+            displayPeakNits: 0f,
+            sdrWhiteNits: ImagingConstants.ScrgbNits);
+        Assert.False(d.IsHdrOutput);
+        Assert.Equal(1f, d.PeakNormalized, precision: 5);
+        Assert.Equal(ImagingConstants.RefWhiteNits, d.PeakNits);
+    }
+
+    [Fact]
+    public void FromStats_SdrAbsolute_MidGray128_AndRed220()
+    {
+        // Encoded mid-gray 128 + red (220,40,40) → working → FromStats after
+        // ResolveDisplayTarget(false,80). PeakNormalized must stay 1 so Option A
+        // does not apply the 80/203 mute (Wimbly PrintWindow ~145).
+        var midLin = ColorMath.SrgbEotf(128f / 255f);
+        var rLin = ColorMath.SrgbEotf(220f / 255f);
+        var gLin = ColorMath.SrgbEotf(40f / 255f);
+        var bLin = ColorMath.SrgbEotf(40f / 255f);
+        var stats = new ImageStats(
+            P50: midLin,
+            P99995: rLin,
+            Max: rLin,
+            MaxRgb: rLin,
+            Lc: 1f,
+            RefWhite: 203f,
+            MetadataPeak: null,
+            SourceClipped: false,
+            SourceClipRatio: 0f);
+        var display = SmoothToneGpu.ResolveDisplayTarget(
+            displayIsHdr: false, displayPeakNits: 0f, sdrWhiteNits: 80f);
+        var packed = SmoothToneGpu.FromStats(stats, display);
+        Assert.Equal(1f, packed.ToneCb[2], precision: 5); // PeakNormalized
+        Assert.Equal(0f, packed.ToneCb[6]); // UseHdrPath
+
+        var p = new ToneMapParams(stats, display, ExposureEv: 0f);
+        ToneMapper.MapPixel(midLin, midLin, midLin, in p, out var mr, out _, out _);
+        ToneMapper.MapPixel(rLin, gLin, bLin, in p, out var or, out var og, out var ob);
+
+        // Encoded 8-bit after OETF — linear-space tol via small code delta.
+        var midEnc = ColorMath.SrgbOetf(mr) * 255f;
+        var rEnc = ColorMath.SrgbOetf(or) * 255f;
+        var gEnc = ColorMath.SrgbOetf(og) * 255f;
+        var bEnc = ColorMath.SrgbOetf(ob) * 255f;
+        var muted80 = ColorMath.SrgbOetf(rLin * (ImagingConstants.ScrgbNits / ImagingConstants.RefWhiteNits)) * 255f;
+        Assert.InRange(midEnc, 128f - 8f, 128f + 8f);
+        Assert.InRange(rEnc, 220f - 8f, 220f + 8f);
+        Assert.InRange(gEnc, 40f - 8f, 40f + 8f);
+        Assert.InRange(bEnc, 40f - 8f, 40f + 8f);
+        // Must not land on the Sdr80 mute (~145).
+        Assert.True(Math.Abs(rEnc - 220f) < Math.Abs(rEnc - muted80));
+    }
+
+    [Fact]
     public void SmoothToneGpu_FromStats_HdrPresentParams()
     {
         var stats = new ImageStats(

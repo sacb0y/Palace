@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -653,14 +654,25 @@ public sealed partial class SmoothPresenterWindow : Window
         ApplyOrientationToPresenter();
         ApplyFitTransformFromPanel();
 
-        // Should-fix: DisplayTarget from monitor HDR when known (not hardcoded Sdr203).
-        // Same Windows HDR probe as HdrSwapchainPresenter (CCD, any path). Peak
-        // unknown → DisplayForPresent's 10000-nit default, like the gallery path.
-        var sdrWhite = DisplayHdr.TrySdrWhiteLevelNits(null);
+        // DisplayTarget from Windows HDR probe. Peak unknown → DisplayForPresent
+        // 10000-nit default (gallery). SDR → Sdr203 (ignore CCD SdrWhiteLevel —
+        // Wimbly absolute 145/220 = 80/203 PeakNormalized mute).
+        var windowsHdr = DisplayHdr.TryWindowsHdrEnabled(null);
+        var sdrWhiteRaw = DisplayHdr.TrySdrWhiteLevelNits(null);
         var display = SmoothToneGpu.ResolveDisplayTarget(
-            displayIsHdr: DisplayHdr.TryWindowsHdrEnabled(null),
+            displayIsHdr: windowsHdr,
             displayPeakNits: 0f,
-            sdrWhiteNits: sdrWhite > 0f ? sdrWhite : ImagingConstants.RefWhiteNits);
+            sdrWhiteNits: sdrWhiteRaw > 0f ? sdrWhiteRaw : ImagingConstants.RefWhiteNits);
+        // VERIFY breadcrumb (Studio scrapes): raw CCD + resolved DisplayTarget.
+        SmoothPresenterLog.AppendNote(
+            CatalogStore.DataDir(),
+            "DisplayTarget"
+            + " IsHdrOutput=" + display.IsHdrOutput
+            + " PeakNits=" + display.PeakNits.ToString(CultureInfo.InvariantCulture)
+            + " SdrWhiteNits=" + display.SdrWhiteNits.ToString(CultureInfo.InvariantCulture)
+            + " PeakNormalized=" + display.PeakNormalized.ToString(CultureInfo.InvariantCulture)
+            + " rawSdrWhiteLevel=" + sdrWhiteRaw.ToString(CultureInfo.InvariantCulture)
+            + " rawWindowsHdr=" + (windowsHdr?.ToString() ?? "null"));
         var packed = SmoothToneGpu.FromStats(working.Stats, display);
         _ = presenter.TryArmV2Viewport(_zoom, _tx, _ty, packed.ToneCb, packed.LutSamples);
     }
