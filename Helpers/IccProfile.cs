@@ -31,61 +31,227 @@ public static class IccProfile
     ];
 
     /// <summary>
+    /// Largest compressed <c>iCCP</c> payload we will load from a stream
+    /// (decompressed still capped by <see cref="MaxProfileBytes"/>).
+    /// </summary>
+    public const int MaxIccpChunkBytes = 2 * 1024 * 1024;
+
+    /// <summary>
     /// True when a PNG carries an <c>iCCP</c> profile Palace cannot map to
     /// Working (not Display P3 / BT.2020 wide-gamut, no <c>sRGB</c> / <c>cICP</c>
     /// override). Strip decode must refuse these — no silent wrong render.
+    /// Streams chunk headers until <c>IDAT</c>/<c>IEND</c>; loads only the
+    /// <c>iCCP</c> payload (never the whole PNG / IDAT).
     /// </summary>
-    public static bool PngHasUnsupportedIcc(ReadOnlySpan<byte> data)
+    public static bool PngHasUnsupportedIcc(string path)
     {
-        if (data.Length < 8 || data[0] != 0x89 || data[1] != (byte)'P')
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
             return false;
         }
 
-        var i = 8;
+        try
+        {
+            using var stream = new FileStream(
+                path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return PngHasUnsupportedIcc(stream);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Stream form of <see cref="PngHasUnsupportedIcc(string)"/>. Reads 8-byte
+    /// chunk headers; skips non-colour payloads; loads only <c>iCCP</c>.
+    /// </summary>
+    public static bool PngHasUnsupportedIcc(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        if (!stream.CanRead)
+        {
+            return false;
+        }
+
+        Span<byte> sig = stackalloc byte[8];
+        if (ReadExact(stream, sig) < 8
+            || sig[0] != 0x89
+            || sig[1] != (byte)'P'
+            || sig[2] != (byte)'N'
+            || sig[3] != (byte)'G')
+        {
+            return false;
+        }
+
         var hasSrgb = false;
         var hasCicp = false;
         var sawIccp = false;
         var matchedWide = false;
+        Span<byte> header = stackalloc byte[8];
 
-        while (i + 12 <= data.Length)
+        while (true)
         {
-            var len = (data[i] << 24) | (data[i + 1] << 16) | (data[i + 2] << 8) | data[i + 3];
-            if (len < 0 || i + 12 + len > data.Length)
+            if (ReadExact(stream, header) < 8)
             {
                 break;
             }
 
-            var type = System.Text.Encoding.ASCII.GetString(data.Slice(i + 4, 4));
-            var payload = data.Slice(i + 8, len);
-            if (type == "sRGB")
+            var len = (header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3];
+            if (len < 0)
+            {
+                break;
+            }
+
+            var t0 = (char)header[4];
+            var t1 = (char)header[5];
+            var t2 = (char)header[6];
+            var t3 = (char)header[7];
+
+            if (t0 == 'I' && t1 == 'D' && t2 == 'A' && t3 == 'T')
+            {
+                break;
+            }
+
+            if (t0 == 'I' && t1 == 'E' && t2 == 'N' && t3 == 'D')
+            {
+                break;
+            }
+
+            if (t0 == 's' && t1 == 'R' && t2 == 'G' && t3 == 'B')
             {
                 hasSrgb = true;
+                if (!SkipExact(stream, len + 4L))
+                {
+                    break;
+                }
+
+                continue;
             }
-            else if (type == "cICP")
+
+            if (t0 == 'c' && t1 == 'I' && t2 == 'C' && t3 == 'P')
             {
                 hasCicp = true;
+                if (!SkipExact(stream, len + 4L))
+                {
+                    break;
+                }
+
+                continue;
             }
-            else if (type == "iCCP" && !sawIccp)
+
+            if (t0 == 'i' && t1 == 'C' && t2 == 'C' && t3 == 'P' && !sawIccp)
             {
                 sawIccp = true;
+                if (len > MaxIccpChunkBytes)
+                {
+                    // Oversized profile — treat as unsupported (cannot map safely).
+                    matchedWide = false;
+                    if (!SkipExact(stream, len + 4L))
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                var payload = new byte[len];
+                if (ReadExact(stream, payload) < len)
+                {
+                    break;
+                }
+
+                // CRC
+                if (!SkipExact(stream, 4))
+                {
+                    break;
+                }
+
                 if (FromPngIccp(payload) is { } profile
                     && MatchWideGamut(profile) is not null)
                 {
                     matchedWide = true;
                 }
+
+                continue;
             }
-            else if (type is "IDAT" or "IEND")
+
+            // Other ancillary chunks — skip payload + CRC.
+            if (!SkipExact(stream, len + 4L))
             {
                 break;
             }
-
-            i += 12 + len;
         }
 
         // sRGB chunk wins over iCCP; cICP carries primaries. Unsupported =
         // iCCP present, not matched wide-gamut, and neither sRGB nor cICP.
         return sawIccp && !matchedWide && !hasSrgb && !hasCicp;
+    }
+
+    /// <summary>
+    /// In-memory form (tests / small buffers). Prefer
+    /// <see cref="PngHasUnsupportedIcc(Stream)"/> for files.
+    /// </summary>
+    public static bool PngHasUnsupportedIcc(ReadOnlySpan<byte> data)
+    {
+        if (data.Length < 8)
+        {
+            return false;
+        }
+
+        // Reuse the stream walker so path / span stay byte-identical.
+        return PngHasUnsupportedIcc(new MemoryStream(data.ToArray(), writable: false));
+    }
+
+    private static int ReadExact(Stream stream, Span<byte> dest)
+    {
+        var total = 0;
+        while (total < dest.Length)
+        {
+            var n = stream.Read(dest[total..]);
+            if (n <= 0)
+            {
+                break;
+            }
+
+            total += n;
+        }
+
+        return total;
+    }
+
+    private static bool SkipExact(Stream stream, long count)
+    {
+        if (count <= 0)
+        {
+            return true;
+        }
+
+        if (stream.CanSeek)
+        {
+            if (count > Math.Max(0, stream.Length - stream.Position))
+            {
+                return false;
+            }
+
+            stream.Position += count;
+            return true;
+        }
+
+        Span<byte> skip = stackalloc byte[8192];
+        var left = count;
+        while (left > 0)
+        {
+            var n = stream.Read(skip[..(int)Math.Min(left, skip.Length)]);
+            if (n <= 0)
+            {
+                return false;
+            }
+
+            left -= n;
+        }
+
+        return true;
     }
 
     /// <summary>Profile bytes from a PNG <c>iCCP</c> payload (name, NUL, method 0, zlib), or null.</summary>

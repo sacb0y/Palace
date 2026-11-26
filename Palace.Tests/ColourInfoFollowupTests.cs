@@ -179,6 +179,37 @@ public sealed class ColourInfoFollowupTests
     }
 
     [Fact]
+    public void PngHasUnsupportedIcc_PathStreamsHeadersOnly()
+    {
+        // Path form must match in-memory form without reading IDAT (FileStream).
+        var dir = Path.Combine(Path.GetTempPath(), "palace-icc-stream-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var ok = Path.Combine(dir, "p3.png");
+            var bad = Path.Combine(dir, "plain-icc.png");
+            File.WriteAllBytes(ok, Png(("iCCP", Iccp(IccRgb(P3Colorants, Para(2.4))))));
+            File.WriteAllBytes(bad, Png(("iCCP", Iccp(IccRgb(SrgbColorants, Para(2.4))))));
+            Assert.False(IccProfile.PngHasUnsupportedIcc(ok));
+            Assert.True(IccProfile.PngHasUnsupportedIcc(bad));
+            // ProbePath already caps ≤ ProbeByteLimit — not a whole-file PNG load.
+            Assert.True(HdrFile.ProbeByteLimit <= 256 * 1024);
+            Assert.Equal(HdrKind.WideGamutPng, HdrFile.ProbePath(ok).Kind);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+                // best-effort temp cleanup
+            }
+        }
+    }
+
+    [Fact]
     public void Probe_IccCurvWithOverflowingCount_IsRejectedWithoutThrowing()
     {
         // curv count 0x80000001: count * 2 wraps a uint; must be rejected as plain PNG.

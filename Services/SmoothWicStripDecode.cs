@@ -102,27 +102,20 @@ internal static class SmoothWicStripDecode
     /// Same <see cref="NormalizeOptions"/> as
     /// <see cref="SmoothSourceLoad.LoadLocalFile"/> / WIC host load. Refuses
     /// PNG iCCP profiles Palace cannot map (no silent wrong Working).
+    /// Streams PNG chunk headers only (never <c>File.ReadAllBytes</c> / IDAT).
+    /// <see cref="HdrFile.ProbePath"/> already caps at
+    /// <see cref="HdrFile.ProbeByteLimit"/> via FileStream — not a whole-file read.
     /// </summary>
     internal static NormalizeOptions ResolveStripNormalizeOptions(string path)
     {
         if (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
-            && File.Exists(path))
+            && IccProfile.PngHasUnsupportedIcc(path))
         {
-            try
-            {
-                var bytes = File.ReadAllBytes(path);
-                if (IccProfile.PngHasUnsupportedIcc(bytes))
-                {
-                    throw new NotSupportedException(
-                        "Strip decode cannot apply unsupported ICC profile; refusing silent wrong Working.");
-                }
-            }
-            catch (IOException)
-            {
-                // Probe below may still succeed; do not mask IO as ICC refusal.
-            }
+            throw new NotSupportedException(
+                "Strip decode cannot apply unsupported ICC profile; refusing silent wrong Working.");
         }
 
+        // ProbePath: FileStream + ≤ ProbeByteLimit (256 KiB) — not whole PNG.
         var probe = HdrFile.ProbePath(path);
         return ImagingStillNormalize.OptionsFromProbe(probe);
     }

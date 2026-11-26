@@ -86,6 +86,11 @@ public enum HdrTransfer
 /// </summary>
 public static class HdrFile
 {
+    /// <summary>
+    /// Max bytes <see cref="ProbePath"/> / <see cref="Probe(Stream)"/> read.
+    /// Not a whole-file load — PNG colour chunks (cICP / iCCP / sRGB) sit before
+    /// IDAT and fit well under this cap even for ≥64MP stills.
+    /// </summary>
     public const int ProbeByteLimit = 256 * 1024;
 
     public static HdrProbe ProbePath(string? path)
@@ -99,6 +104,7 @@ public static class HdrFile
 
         try
         {
+            // FileStream + ProbeByteLimit — never File.ReadAllBytes.
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             return Probe(stream);
         }
