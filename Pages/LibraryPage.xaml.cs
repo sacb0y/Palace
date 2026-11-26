@@ -1248,31 +1248,34 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        var preview = TglPreviewPane.DesiredSize.Width;
-        if (preview < 1)
-        {
-            TglPreviewPane.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-            preview = TglPreviewPane.DesiredSize.Width;
-        }
-
-        if (preview < 1 && TglPreviewPane.ActualWidth > 0)
+        // Preview is always on the face — prefer live ActualWidth when Visible
+        // (DesiredSize after a Collapsed trap would under-reserve).
+        var preview = 0.0;
+        if (TglPreviewPane.Visibility == Visibility.Visible && TglPreviewPane.ActualWidth > 0)
         {
             preview = TglPreviewPane.ActualWidth;
+        }
+
+        var infinite = new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity);
+        if (preview < 1)
+        {
+            TglPreviewPane.Measure(infinite);
+            preview = TglPreviewPane.DesiredSize.Width;
         }
 
         var previewMargin = TglPreviewPane.Margin.Left + TglPreviewPane.Margin.Right;
         var available = Math.Max(0, host - preview - previewMargin);
 
-        // Reveal every optional so Measure sees full face width; More stays out of
-        // the always-on + optional sum (caller adds it when any button parks).
+        // Reveal every optional so Measure sees full face width. More must also be
+        // Visible while measured — Collapsed DesiredSize is 0 and the resolver
+        // would never reserve it (Wimbly / Studio overlap @ 7b379a8).
         BtnAddToRoom.Visibility = Visibility.Visible;
         BtnUndo.Visibility = Visibility.Visible;
         BtnNewFolder.Visibility = Visibility.Visible;
         BtnOrganize.Visibility = Visibility.Visible;
         BtnReview.Visibility = Visibility.Visible;
-        BtnLibraryToolbarMore.Visibility = Visibility.Collapsed;
+        BtnLibraryToolbarMore.Visibility = Visibility.Visible;
 
-        var infinite = new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity);
         SpnLibraryToolbarFace.Measure(infinite);
         var spacing = SpnLibraryToolbarFace.Spacing;
 

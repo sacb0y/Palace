@@ -168,6 +168,42 @@ public sealed class LibraryLayoutViewportTests
         Assert.All(expanded, p => Assert.False(p));
     }
 
+    /// <summary>
+    /// More contribution must be reserved whenever anything is parked. A zero
+    /// moreWidth (Collapsed DesiredSize trap) lets the face overflow Preview.
+    /// </summary>
+    [Fact]
+    public void ResolveLibraryToolbarOverflow_ReservesMoreWidthWhenParked()
+    {
+        const double alwaysOn = 200;
+        const double more = 40;
+        double[] widths = [100, 100, 100, 100, 100];
+
+        // Without More: park one → 600 ≤ 630. With More: 600+40=640 > 630 → park two
+        // → 500+40=540 ≤ 630.
+        var withoutMore = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+            630, widths, alwaysOn, moreButtonWidth: 0, previous: null, expandHysteresisDip: 0);
+        Assert.True(withoutMore[0]);
+        Assert.False(withoutMore[1]);
+
+        var withMore = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+            630, widths, alwaysOn, moreButtonWidth: more, previous: null, expandHysteresisDip: 0);
+        Assert.True(withMore[0] && withMore[1]);
+        Assert.False(withMore[2]);
+
+        var face = alwaysOn + more;
+        for (var i = 0; i < withMore.Length; i++)
+        {
+            if (!withMore[i])
+            {
+                face += widths[i];
+            }
+        }
+
+        Assert.True(face <= 630);
+        Assert.Contains(true, withMore);
+    }
+
     [Fact]
     public void ShellNavPane_MatchesMainPageOpenAndCompactLengths()
     {
