@@ -95,19 +95,6 @@ public class SmoothSingleEotfTests
     }
 
     [Fact]
-    public void SmoothEncodedPath_ScrgbSkipped_SavesOneFloatRgbaBuffer()
-    {
-        // When EncodedRgba is preferred, ScrgbRgba stays empty — one less
-        // float RGBA (~16 B/px). Studio logs peak PrivateBytes 16MP + ~60MP
-        // normal-path before/after this tip; expected Δ ≈ −256 MB / −960 MB
-        // vs tip 9ddd032 (held both buffers).
-        Assert.Empty(Array.Empty<float>());
-        const long bytesPerPx = 4L * sizeof(float);
-        Assert.Equal(256L * 1024 * 1024, 16L * 1024 * 1024 * bytesPerPx);
-        Assert.Equal(960L * 1024 * 1024, 60L * 1024 * 1024 * bytesPerPx);
-    }
-
-    [Fact]
     public void OptionsFromProbeSdr_OnScrgb_DoubleEotf_StillWrong()
     {
         // Guard: the old LoadWic bug must stay detectable.
