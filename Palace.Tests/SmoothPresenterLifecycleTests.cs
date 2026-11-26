@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using Palace.Helpers;
+using Palace.Imaging;
 using Xunit;
 
 namespace Palace.Tests;
@@ -115,6 +116,31 @@ public sealed class SmoothPresenterLogTests
         Assert.Contains("present_ms=0.500", line, StringComparison.Ordinal);
         Assert.Contains("total_ms=4.250", line, StringComparison.Ordinal);
         Assert.Contains("note=ok", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FormatImageStatsNote_StableFieldOrderForStudioScrape()
+    {
+        var stats = new ImageStats(
+            P50: 0.418761f,
+            P99995: 0.727577f,
+            Max: 0.73233f,
+            MaxRgb: 0.775478f,
+            Lc: 1f,
+            RefWhite: 1f,
+            MetadataPeak: null,
+            SourceClipped: false,
+            SourceClipRatio: 0f);
+        var note = SmoothPresenterLog.FormatImageStatsNote(stats);
+        Assert.StartsWith("ImageStats P50=", note, StringComparison.Ordinal);
+        Assert.Contains(" P99995=", note, StringComparison.Ordinal);
+        Assert.Contains(" Max=", note, StringComparison.Ordinal);
+        Assert.Contains(" MaxRgb=", note, StringComparison.Ordinal);
+        Assert.Contains(" Lc=", note, StringComparison.Ordinal);
+        Assert.Contains(" RefWhite=", note, StringComparison.Ordinal);
+        Assert.Contains(" SourceClipped=False", note, StringComparison.Ordinal);
+        Assert.Contains(" SourceClipRatio=", note, StringComparison.Ordinal);
+        Assert.DoesNotContain('\n', note);
     }
 
     [Fact]

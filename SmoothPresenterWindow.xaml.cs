@@ -355,6 +355,8 @@ public sealed partial class SmoothPresenterWindow : Window
         }
 
         ApplyOrientationToPresenter();
+        // Studio A/B scrapes note=ImageStats from the frame log (strip + normal).
+        SmoothPresenterLog.AppendImageStats(CatalogStore.DataDir(), result.Stats);
         TxtSmoothTiles.Text =
             $"Working {result.Width}x{result.Height} gen={result.Generation} orient={_exifOrientation} — building pyramid…";
         if (_poolReady)

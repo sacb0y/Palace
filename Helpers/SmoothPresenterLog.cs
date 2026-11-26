@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Palace.Imaging;
 
 namespace Palace.Helpers;
 
@@ -133,4 +134,25 @@ public static class SmoothPresenterLog
                    + " note=" + note.Replace('\n', ' ').Replace('\r', ' ');
         Append(ResolvePath(dataDir), line);
     }
+
+    /// <summary>
+    /// Studio A/B scrapes <c>note=ImageStats …</c> from the frame log after
+    /// Working decode (strip + DecodePath). Keep field names / order stable.
+    /// </summary>
+    public static string FormatImageStatsNote(ImageStats stats)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        return "ImageStats"
+            + " P50=" + stats.P50.ToString(inv)
+            + " P99995=" + stats.P99995.ToString(inv)
+            + " Max=" + stats.Max.ToString(inv)
+            + " MaxRgb=" + stats.MaxRgb.ToString(inv)
+            + " Lc=" + stats.Lc.ToString(inv)
+            + " RefWhite=" + stats.RefWhite.ToString(inv)
+            + " SourceClipped=" + stats.SourceClipped.ToString(inv)
+            + " SourceClipRatio=" + stats.SourceClipRatio.ToString(inv);
+    }
+
+    public static void AppendImageStats(string? dataDir, ImageStats stats) =>
+        AppendNote(dataDir, FormatImageStatsNote(stats));
 }
