@@ -9,7 +9,8 @@ public static class SelectMode
     /// <summary>
     /// True when a plain click or tap on a tile should toggle it
     /// (<c>ItemsViewSelectionMode.Multiple</c>). Off is a single preview tile
-    /// (<c>Single</c>) — never Extended Ctrl/Shift multi-select. Space opens overlay, not toggle.
+    /// (<c>Single</c>). Custom Shift/Ctrl handlers auto-enter select mode —
+    /// never WinUI <c>ItemsViewSelectionMode.Extended</c>. Space opens overlay, not toggle.
     /// </summary>
     public static bool ClickTogglesTile(bool selectMode) => selectMode;
 
@@ -20,6 +21,60 @@ public static class SelectMode
     /// </summary>
     public static bool EnterFromHold(bool selectMode, bool overlayOpen, bool isFolderHeader) =>
         !selectMode && !overlayOpen && !isFolderHeader;
+
+    /// <summary>
+    /// Shift / Ctrl / Ctrl+Shift click on a mosaic tile (not a folder header,
+    /// not while the overlay is open) auto-enters select mode. Still avoids
+    /// WinUI Extended — callers wire <see cref="MosaicModifierSelect"/> themselves.
+    /// </summary>
+    public static bool EnterFromModifierClick(bool selectMode, bool overlayOpen, bool isFolderHeader) =>
+        !selectMode && !overlayOpen && !isFolderHeader;
+
+    /// <summary>
+    /// Modifier-entered select mode: a plain tile-body click replaces the
+    /// selection with that tile and exits. Purposeful entry (Select / checkbox /
+    /// hold / Ctrl+A) keeps Multiple toggle on the body.
+    /// </summary>
+    public static bool TileBodyClickReplacesAndExits(SelectEntryKind entryKind) =>
+        entryKind == SelectEntryKind.Modifier;
+
+    /// <summary>Purposeful entry: tile-body click toggles (ItemsView Multiple).</summary>
+    public static bool TileBodyClickToggles(SelectEntryKind entryKind) =>
+        entryKind == SelectEntryKind.Purposeful;
+
+    /// <summary>
+    /// True when a mosaic pointer press should apply tile-body replace/toggle
+    /// policy. Checkbox hits never do — ItemsView toggles that one tile only.
+    /// </summary>
+    public static bool AppliesTileBodyClickPolicy(SelectEntryKind entryKind, bool isCheckboxHit) =>
+        !isCheckboxHit
+        && entryKind is SelectEntryKind.Modifier or SelectEntryKind.Purposeful;
+
+    /// <summary>
+    /// Checkbox hit: do not start range-select and do not replace the selection.
+    /// </summary>
+    public static bool DefersCheckboxToItemsView(bool isCheckboxHit) => isCheckboxHit;
+
+    /// <summary>
+    /// Entry-kind stamp for EnsureSelectMode: only write when entering from off
+    /// or the kind is still None — later modifier clicks must not overwrite
+    /// purposeful entry. Shared by VM + <c>MosaicSelectHarness</c>.
+    /// </summary>
+    public static SelectEntryKind NextEntryKind(
+        bool isSelectMode,
+        SelectEntryKind current,
+        SelectEntryKind requested) =>
+        !isSelectMode || current == SelectEntryKind.None ? requested : current;
+
+    /// <summary>Select mode exits when the selection count reaches zero.</summary>
+    public static bool ExitsWhenSelectionEmpty(bool selectMode, int selectedCount) =>
+        selectMode && selectedCount <= 0;
+
+    /// <summary>Entry kind after auto-enter from a modifier click.</summary>
+    public static SelectEntryKind EntryFromModifier() => SelectEntryKind.Modifier;
+
+    /// <summary>Entry kind after Select toggle, checkbox, hold, or Ctrl+A.</summary>
+    public static SelectEntryKind EntryFromPurposeful() => SelectEntryKind.Purposeful;
 
     /// <summary>
     /// In select mode, long-press opens the batch ContextFlyout (same as right-click).
@@ -69,14 +124,18 @@ public static class SelectMode
     }
 
     /// <summary>
-    /// Esc exits select mode while the overlay is closed (selection kept —
-    /// Clear is the path that drops tiles).
+    /// Esc clears the selection and exits select mode while the overlay is closed
+    /// (modifier-click plan; Clear / Esc share the same path).
     /// </summary>
     public static bool ExitsSelectModeOnEscape(bool selectMode, bool overlayOpen) =>
         selectMode && !overlayOpen;
 
     /// <summary>Clear selection exits select mode.</summary>
     public static bool ExitsSelectModeOnClear(bool selectMode) => selectMode;
+
+    /// <summary>Esc should clear tiles (not keep them) when exiting select mode.</summary>
+    public static bool ClearsSelectionOnEscape(bool selectMode, bool overlayOpen) =>
+        ExitsSelectModeOnEscape(selectMode, overlayOpen);
 
     /// <summary>
     /// Trailing clause when some selected tiles live under collapsed sections:
@@ -89,19 +148,24 @@ public static class SelectMode
 
     /// <summary>
     /// Count line beside the toggle / delete-move confirm. Empty when select
-    /// mode is off and nothing is selected. When some selected tiles live under
-    /// collapsed sections: <c>42 selected · 30 in collapsed sections</c>.
-    /// Esc exits select mode but keeps the count line (selection is not cleared).
+    /// mode is off and nothing is selected. While select mode is on with tiles:
+    /// <c>N selected · Esc to clear</c> (plus collapsed clause). After Done exits
+    /// mode but keeps tiles: <c>N selected</c> only.
     /// </summary>
     public static string Summary(bool selectMode, int selectedCount, int collapsedSelectedCount = 0)
     {
         if (selectedCount > 0)
         {
-            return $"{selectedCount} selected{CollapsedClause(collapsedSelectedCount)}";
+            var core = $"{selectedCount} selected{CollapsedClause(collapsedSelectedCount)}";
+            return selectMode ? $"{core} · Esc to clear" : core;
         }
 
         return selectMode ? "Click or drag tiles to select" : "";
     }
+
+    /// <summary>Status-bar line while select mode owns a non-empty selection.</summary>
+    public static string StatusSelectedLine(int selectedCount) =>
+        selectedCount > 0 ? $"{selectedCount} selected · Esc to clear" : "";
 
     /// <summary>
     /// How many of <paramref name="targetIds"/> are ordered mosaic tiles that are

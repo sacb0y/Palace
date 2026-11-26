@@ -35,6 +35,12 @@ public partial class LibraryViewModel : ObservableObject
     private List<AssetItem> _selection = [];
     private List<AssetItem> _previewTargets = [];
     private AssetItem? _selectionAnchor;
+    /// <summary>Focused mosaic tile for Preview-follow + Shift/Ctrl keyboard extend.</summary>
+    private AssetItem? _selectionFocus;
+    /// <summary>How select mode was entered — drives plain tile-body click.</summary>
+    private SelectEntryKind _selectEntryKind = SelectEntryKind.None;
+    /// <summary>One-slot dropped-selection Ctrl+Z buffer (not FileOp).</summary>
+    internal DroppedSelectionSlot DroppedSelection { get; } = new();
     /// <summary>Cached display set for drag-select / collapsed counts; cleared when Assets change.</summary>
     private HashSet<AssetItem>? _displayedSelectionCache;
     private bool _suppressFilter;

@@ -72,9 +72,9 @@ public sealed partial class LibraryPage
 
         if (e.Key == VirtualKey.Escape
             && !FocusIsTextInput(e.OriginalSource)
-            && SelectMode.ExitsSelectModeOnEscape(ViewModel.IsSelectMode, ViewModel.IsGalleryOverlayOpen))
+            && SelectMode.ClearsSelectionOnEscape(ViewModel.IsSelectMode, ViewModel.IsGalleryOverlayOpen))
         {
-            ViewModel.ExitSelectModeCommand.Execute(null);
+            ViewModel.ClearSelectionAndExitCommand.Execute(null);
             e.Handled = true;
             return;
         }
@@ -86,6 +86,13 @@ public sealed partial class LibraryPage
             || ViewModel.IsGalleryOverlayOpen
             || FocusIsTextInput(e.OriginalSource))
         {
+            return;
+        }
+
+        // One-slot dropped-selection restore first; else FileOp undo.
+        if (ViewModel.TryRestoreDroppedSelection())
+        {
+            e.Handled = true;
             return;
         }
 
