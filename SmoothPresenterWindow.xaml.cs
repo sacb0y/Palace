@@ -422,6 +422,9 @@ public sealed partial class SmoothPresenterWindow : Window
             _deviceLostRetryCount = 0;
             _nextRecreateDueQpc = 0;
             _poolReady = true;
+            // Mid-drag / mid-pinch state cannot survive Host recreate — otherwise
+            // `_panning` stays true and PointerPressed (~939) swallows later clicks.
+            ClearGestureStateAfterDeviceLost();
             // Pyramid is image-scoped. GPU recreate re-uploads coarse + re-arms;
             // do not rebuild CPU pyramid when it already finished.
             if (_working is not null && _tiles is not null)
@@ -854,7 +857,9 @@ public sealed partial class SmoothPresenterWindow : Window
 
         var pt = e.GetCurrentPoint(ScpSmooth);
         var (_, _, sx, sy) = PanelMetrics();
-        // Device px so TickTransformEase ZoomAbout matches pan space.
+        // Always sample the *current* mouse point before changing the target.
+        // Pinch/manip never writes _lastPan (Isiac two-finger fly-off) — a stale
+        // pan/pinch point must not anchor the post-pinch wheel ease.
         _lastPanX = (float)(pt.Position.X * sx);
         _lastPanY = (float)(pt.Position.Y * sy);
 
@@ -879,6 +884,14 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void ScpSmooth_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
     {
+        // WinUI also fires Translate manip for Mouse past the drag threshold.
+        // Only Touch owns manipulation; Mouse/Pen stay on pointer pan so a
+        // click-drag past slop does not EndPointerPanClean mid-drag.
+        if (e.PointerDeviceType != PointerDeviceType.Touch)
+        {
+            return;
+        }
+
         // Touch pinch/pan owns the gesture — drop any Mouse/Pen pointer pan.
         EndPointerPanClean();
         _pinching = true;
@@ -888,7 +901,11 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void ScpSmooth_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
     {
-        if (_presenter is null || !_hostStarted || e.IsInertial)
+        // Touch only (incl. 2→1 finger: remaining contact keeps panning here).
+        if (e.PointerDeviceType != PointerDeviceType.Touch
+            || _presenter is null
+            || !_hostStarted
+            || e.IsInertial)
         {
             return;
         }
@@ -914,6 +931,11 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void ScpSmooth_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
     {
+        if (e.PointerDeviceType != PointerDeviceType.Touch)
+        {
+            return;
+        }
+
         _pinching = false;
         TrySnapPanAtRest();
         e.Handled = true;
@@ -921,6 +943,11 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void ScpSmooth_ManipulationInertiaStarting(object sender, ManipulationInertiaStartingRoutedEventArgs e)
     {
+        if (e.PointerDeviceType != PointerDeviceType.Touch)
+        {
+            return;
+        }
+
         // No inertia — pinch/pan 1:1 ends on finger lift.
         e.Handled = true;
     }
@@ -995,6 +1022,16 @@ public sealed partial class SmoothPresenterWindow : Window
         _panning = false;
         _panPointerId = null;
         ScpSmooth.ReleasePointerCaptures();
+    }
+
+    /// <summary>
+    /// After GPU Host recreate: drop pan/pinch so a lost mid-drag cannot leave
+    /// <c>_panning</c> true (PointerPressed then ignores later clicks).
+    /// </summary>
+    private void ClearGestureStateAfterDeviceLost()
+    {
+        EndPointerPanClean();
+        _pinching = false;
     }
 
     private void ScpSmooth_SizeChanged(object sender, SizeChangedEventArgs e)
