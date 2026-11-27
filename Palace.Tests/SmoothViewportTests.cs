@@ -168,8 +168,13 @@ public sealed class SmoothViewportTests
             panning: true, capturedPointerId: 1u, eventPointerId: 2u));
         Assert.False(SmoothViewport.IsActivePointerPan(
             panning: false, capturedPointerId: 1u, eventPointerId: 1u));
+        // Null capture id must not drive pan (CaptureLost / device-lost clear).
+        Assert.False(SmoothViewport.IsActivePointerPan(
+            panning: true, capturedPointerId: null, eventPointerId: 1u));
         Assert.True(SmoothViewport.AllowsPointerPanBegin(isMouseOrPen: true, leftButton: true));
         Assert.False(SmoothViewport.AllowsPointerPanBegin(isMouseOrPen: false, leftButton: true));
+        // Mouse/Pen without left button must not begin pointer pan.
+        Assert.False(SmoothViewport.AllowsPointerPanBegin(isMouseOrPen: true, leftButton: false));
     }
 
     [Fact]
@@ -182,5 +187,30 @@ public sealed class SmoothViewportTests
         var about = SmoothViewport.ZoomAbout(1f, 0f, 0f, 32f, 100f, 50f);
         Assert.Equal(about.Tx, tx, precision: 3);
         Assert.Equal(about.Ty, ty, precision: 3);
+    }
+
+    [Fact]
+    public void ManipulationScaleTranslate_ClampedScale_UsesEffectiveScaleForPan()
+    {
+        // scaleDelta 64 from z=1 clamps to MaxZoom=32; pan must use effective 32, not 64.
+        var (z, tx, ty) = SmoothViewport.ManipulationScaleTranslate(
+            zoom: 1f,
+            tx: 0f,
+            ty: 0f,
+            scaleDelta: 64f,
+            centroidX: 100f,
+            centroidY: 50f,
+            translationX: 10f,
+            translationY: -4f,
+            fitZoom: 0.1f);
+        Assert.Equal(SmoothViewport.MaxZoom, z);
+        var about = SmoothViewport.PinchZoomAbout(
+            1f, 0f, 0f, 64f, 100f, 50f, fitZoom: 0.1f);
+        var effective = about.Zoom / 1f;
+        Assert.Equal(32f, effective);
+        Assert.Equal(about.Tx + (10f * effective), tx, precision: 4);
+        Assert.Equal(about.Ty + (-4f * effective), ty, precision: 4);
+        // Raw scaleDelta would over-pan — prove we did not use 64.
+        Assert.NotEqual(about.Tx + (10f * 64f), tx);
     }
 }
