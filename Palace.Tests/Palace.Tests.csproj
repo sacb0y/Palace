@@ -142,6 +142,7 @@
     <Compile Include="..\Helpers\SmoothMipDownsampleCpu.cs" Link="SmoothMipDownsampleCpu.cs" />
     <Compile Include="..\Helpers\SmoothTileSession.cs" Link="SmoothTileSession.cs" />
     <Compile Include="..\Helpers\SmoothViewport.cs" Link="SmoothViewport.cs" />
+    <Compile Include="..\Helpers\SmoothZoomHud.cs" Link="SmoothZoomHud.cs" />
     <Compile Include="..\Helpers\SmoothViewportArmPolicy.cs" Link="SmoothViewportArmPolicy.cs" />
     <Compile Include="..\Helpers\SmoothTickReentrancy.cs" Link="SmoothTickReentrancy.cs" />
     <Compile Include="..\Helpers\SmoothViewportFrame.cs" Link="SmoothViewportFrame.cs" />

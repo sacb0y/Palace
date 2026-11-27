@@ -4,10 +4,61 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="Palace Smooth Presenter (V3 input)">
+    Title="Palace Smooth Presenter (V4 HUD)">
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.Resources>
+            <ResourceDictionary>
+                <ResourceDictionary.ThemeDictionaries>
+                    <ResourceDictionary x:Key="Default">
+                        <SolidColorBrush x:Key="SmoothZoomHudFillBrush" Color="#E6202020" />
+                        <SolidColorBrush x:Key="SmoothZoomHudRingBrush" Color="#33FFFFFF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudInkBrush" Color="#FFFFFFFF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudHoverBrush" Color="#14FFFFFF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudSelectedFillBrush" Color="#FF4CC2FF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudSelectedInkBrush" Color="#FF00131F" />
+                        <SolidColorBrush x:Key="SmoothZoomHudFocusBrush" Color="#FFFFFFFF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudDimInkBrush" Color="#66FFFFFF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudDividerBrush" Color="#33FFFFFF" />
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="Dark">
+                        <SolidColorBrush x:Key="SmoothZoomHudFillBrush" Color="#E6202020" />
+                        <SolidColorBrush x:Key="SmoothZoomHudRingBrush" Color="#33FFFFFF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudInkBrush" Color="#FFFFFFFF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudHoverBrush" Color="#14FFFFFF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudSelectedFillBrush" Color="#FF4CC2FF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudSelectedInkBrush" Color="#FF00131F" />
+                        <SolidColorBrush x:Key="SmoothZoomHudFocusBrush" Color="#FFFFFFFF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudDimInkBrush" Color="#66FFFFFF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudDividerBrush" Color="#33FFFFFF" />
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="Light">
+                        <SolidColorBrush x:Key="SmoothZoomHudFillBrush" Color="#F0F3F3F3" />
+                        <SolidColorBrush x:Key="SmoothZoomHudRingBrush" Color="#28000000" />
+                        <SolidColorBrush x:Key="SmoothZoomHudInkBrush" Color="#E4000000" />
+                        <SolidColorBrush x:Key="SmoothZoomHudHoverBrush" Color="#0E000000" />
+                        <SolidColorBrush x:Key="SmoothZoomHudSelectedFillBrush" Color="#FF4CC2FF" />
+                        <SolidColorBrush x:Key="SmoothZoomHudSelectedInkBrush" Color="#FF00131F" />
+                        <SolidColorBrush x:Key="SmoothZoomHudFocusBrush" Color="#E4000000" />
+                        <SolidColorBrush x:Key="SmoothZoomHudDimInkBrush" Color="#66000000" />
+                        <SolidColorBrush x:Key="SmoothZoomHudDividerBrush" Color="#28000000" />
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="HighContrast">
+                        <SolidColorBrush x:Key="SmoothZoomHudFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                        <SolidColorBrush x:Key="SmoothZoomHudRingBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                        <SolidColorBrush x:Key="SmoothZoomHudInkBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                        <SolidColorBrush x:Key="SmoothZoomHudHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                        <SolidColorBrush x:Key="SmoothZoomHudSelectedFillBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                        <SolidColorBrush x:Key="SmoothZoomHudSelectedInkBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                        <SolidColorBrush x:Key="SmoothZoomHudFocusBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                        <SolidColorBrush x:Key="SmoothZoomHudDimInkBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+                        <SolidColorBrush x:Key="SmoothZoomHudDividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    </ResourceDictionary>
+                </ResourceDictionary.ThemeDictionaries>
+            </ResourceDictionary>
+        </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -26,33 +77,227 @@
                 x:Name="TxtSmoothTiles"
                 AutomationProperties.AutomationId="TxtSmoothTiles"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="V3 Working decode: idle"
+                Text="V4 Working decode: idle"
                 TextWrapping="WrapWholeWords" />
             <TextBlock
                 x:Name="TxtSmoothHint"
                 AutomationProperties.AutomationId="TxtSmoothHint"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="V3: strip ≥64MP · wheel notches+ease · pinch 1:1 · pan snap at rest · R/Shift+R"
+                Text="V4: Zoom HUD · 0 Fit · 1 1:1 · G grid · wheel ease · pinch 1:1"
                 TextWrapping="WrapWholeWords" />
         </StackPanel>
-        <SwapChainPanel
-            x:Name="ScpSmooth"
-            Grid.Row="1"
-            AutomationProperties.AutomationId="ScpSmooth"
-            ManipulationMode="TranslateX,TranslateY,Scale"
-            CompositionScaleChanged="ScpSmooth_CompositionScaleChanged"
-            SizeChanged="ScpSmooth_SizeChanged"
-            PointerWheelChanged="ScpSmooth_PointerWheelChanged"
-            PointerPressed="ScpSmooth_PointerPressed"
-            PointerMoved="ScpSmooth_PointerMoved"
-            PointerReleased="ScpSmooth_PointerReleased"
-            PointerCanceled="ScpSmooth_PointerReleased"
-            PointerCaptureLost="ScpSmooth_PointerReleased"
-            ManipulationStarted="ScpSmooth_ManipulationStarted"
-            ManipulationDelta="ScpSmooth_ManipulationDelta"
-            ManipulationCompleted="ScpSmooth_ManipulationCompleted"
-            ManipulationInertiaStarting="ScpSmooth_ManipulationInertiaStarting"
-            KeyDown="ScpSmooth_KeyDown" />
+        <Grid Grid.Row="1">
+            <SwapChainPanel
+                x:Name="ScpSmooth"
+                AutomationProperties.AutomationId="ScpSmooth"
+                ManipulationMode="TranslateX,TranslateY,Scale"
+                CompositionScaleChanged="ScpSmooth_CompositionScaleChanged"
+                SizeChanged="ScpSmooth_SizeChanged"
+                PointerWheelChanged="ScpSmooth_PointerWheelChanged"
+                PointerPressed="ScpSmooth_PointerPressed"
+                PointerMoved="ScpSmooth_PointerMoved"
+                PointerReleased="ScpSmooth_PointerReleased"
+                PointerCanceled="ScpSmooth_PointerReleased"
+                PointerCaptureLost="ScpSmooth_PointerReleased"
+                ManipulationStarted="ScpSmooth_ManipulationStarted"
+                ManipulationDelta="ScpSmooth_ManipulationDelta"
+                ManipulationCompleted="ScpSmooth_ManipulationCompleted"
+                ManipulationInertiaStarting="ScpSmooth_ManipulationInertiaStarting"
+                KeyDown="ScpSmooth_KeyDown" />
+
+            <!-- Top-left toolbar: Fit / 1:1 / Grid (always-easy hit when HUD is faint). -->
+            <Border
+                x:Name="BrdSmoothToolbar"
+                Margin="16,16,16,0"
+                Padding="6,4"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ToggleButton
+                        x:Name="BtnSmoothToolbarFit"
+                        Padding="8,4"
+                        AutomationProperties.AutomationId="BtnSmoothToolbarFit"
+                        AutomationProperties.Name="Fit"
+                        Click="BtnSmoothFit_Click"
+                        ToolTipService.ToolTip="Fit to window  0">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="ScaleFit" IconSize="Size20" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Fit" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="0" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton
+                        x:Name="BtnSmoothToolbarActual"
+                        Padding="8,4"
+                        AutomationProperties.AutomationId="BtnSmoothToolbarActual"
+                        AutomationProperties.Name="Actual size"
+                        Click="BtnSmoothActual_Click"
+                        ToolTipService.ToolTip="Actual size  1">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="RatioOneToOne" IconSize="Size20" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="1:1" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="1" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton
+                        x:Name="BtnSmoothToolbarGrid"
+                        Padding="8,4"
+                        AutomationProperties.AutomationId="BtnSmoothToolbarGrid"
+                        AutomationProperties.Name="Pixel grid"
+                        Click="BtnSmoothGrid_Click"
+                        ToolTipService.ToolTip="Pixel grid (G)">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="Grid" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Grid" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="G" />
+                        </StackPanel>
+                    </ToggleButton>
+                </StackPanel>
+            </Border>
+
+            <!-- Bottom-center Zoom HUD pill (V4 spec). -->
+            <Border
+                x:Name="BrdZoomHud"
+                Height="36"
+                Margin="0,0,0,16"
+                Padding="10,4"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Background="{ThemeResource SmoothZoomHudFillBrush}"
+                BorderBrush="{ThemeResource SmoothZoomHudRingBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Opacity="0.20"
+                PointerEntered="BrdZoomHud_PointerEntered"
+                PointerExited="BrdZoomHud_PointerExited"
+                GotFocus="BrdZoomHud_GotFocus"
+                LostFocus="BrdZoomHud_LostFocus">
+                <StackPanel
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <TextBlock
+                        x:Name="TxtZoomHudPercent"
+                        MinWidth="64"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="TxtZoomHudPercent"
+                        AutomationProperties.LiveSetting="Polite"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource SmoothZoomHudInkBrush}"
+                        Text="100%" />
+                    <Border
+                        Width="1"
+                        Height="16"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource SmoothZoomHudDividerBrush}" />
+                    <ToggleButton
+                        x:Name="BtnZoomHudFit"
+                        Width="Auto"
+                        Height="28"
+                        MinWidth="28"
+                        MinHeight="28"
+                        Padding="8,0"
+                        AutomationProperties.AutomationId="BtnZoomHudFit"
+                        AutomationProperties.Name="Fit"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="BtnSmoothFit_Click"
+                        CornerRadius="5"
+                        ToolTipService.ToolTip="Fit to window  0"
+                        GotFocus="HudButton_GotFocus"
+                        LostFocus="HudButton_LostFocus">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock
+                                x:Name="TxtZoomHudFit"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="{ThemeResource SmoothZoomHudInkBrush}"
+                                Text="Fit" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{ThemeResource SmoothZoomHudDimInkBrush}"
+                                Text="0" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton
+                        x:Name="BtnZoomHudActual"
+                        Width="Auto"
+                        Height="28"
+                        MinWidth="28"
+                        MinHeight="28"
+                        Padding="8,0"
+                        AutomationProperties.AutomationId="BtnZoomHudActual"
+                        AutomationProperties.Name="Actual size"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="BtnSmoothActual_Click"
+                        CornerRadius="5"
+                        ToolTipService.ToolTip="Actual size  1"
+                        GotFocus="HudButton_GotFocus"
+                        LostFocus="HudButton_LostFocus">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock
+                                x:Name="TxtZoomHudActual"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="{ThemeResource SmoothZoomHudInkBrush}"
+                                Text="1:1" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{ThemeResource SmoothZoomHudDimInkBrush}"
+                                Text="1" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <Border
+                        Width="1"
+                        Height="16"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource SmoothZoomHudDividerBrush}" />
+                    <ToggleButton
+                        x:Name="BtnZoomHudGrid"
+                        Width="28"
+                        Height="28"
+                        MinWidth="28"
+                        MinHeight="28"
+                        Padding="0"
+                        AutomationProperties.AutomationId="BtnZoomHudGrid"
+                        AutomationProperties.Name="Pixel grid"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="BtnSmoothGrid_Click"
+                        CornerRadius="5"
+                        ToolTipService.ToolTip="Pixel grid (G)"
+                        GotFocus="HudButton_GotFocus"
+                        LostFocus="HudButton_LostFocus">
+                        <ic:FluentIcon
+                            x:Name="IcnZoomHudGrid"
+                            Foreground="{ThemeResource SmoothZoomHudInkBrush}"
+                            Icon="Grid"
+                            IconSize="Size16"
+                            IconVariant="Regular" />
+                    </ToggleButton>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>
