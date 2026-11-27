@@ -41,6 +41,8 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private float _zoom = 1f;
     private float _tx;
     private float _ty;
+    /// <summary>V4 pixel-grid toggle (0/1). HLSL eases draw from 8×→10×.</summary>
+    private float _gridOpacity;
     private SmoothViewport.ExifOrient _orient = SmoothViewport.ExifOrient.Identity(1, 1);
     private bool _viewportArmed;
     private bool _pyramidBuildRunning;
@@ -618,6 +620,15 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         _ty = ty;
     }
 
+    /// <summary>
+    /// Pixel-grid toggle (off by default). Packs into existing HLSL
+    /// <c>GridParams.x</c> — do not add a second grid pass.
+    /// </summary>
+    public void SetPixelGridArmed(bool armed) =>
+        _gridOpacity = SmoothZoomHud.PackGridOpacity(armed);
+
+    public bool PixelGridArmed => _gridOpacity > 0.5f;
+
     /// <summary>EXIF 1–8 matrix + translation (storage→upright); call before arm.</summary>
     public void SetOrientation(in SmoothViewport.ExifOrient orient) => _orient = orient;
 
@@ -733,7 +744,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         dtMs = Math.Clamp(dtMs, 1f, 100f);
 
         var imgToDev = SmoothViewport.Affine2x3.FromZoomPan(_zoom, _tx, _ty, in _orient);
-        SmoothViewport.PackViewCb(_viewPack, imgToDev, w, h, _zoom);
+        SmoothViewport.PackViewCb(_viewPack, imgToDev, w, h, _zoom, gridOpacity: _gridOpacity);
         _ = SmoothPresenterNative.ViewportSetView(
             _host,
             SmoothPresenterNative.ViewCb.FromPacked(_viewPack));

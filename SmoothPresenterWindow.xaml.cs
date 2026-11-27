@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Palace.Helpers;
@@ -58,22 +59,68 @@ public sealed partial class SmoothPresenterWindow : Window
     private string? _sourcePath;
     private long _lastEaseQpc;
 
+    // V4 Zoom HUD + pixel grid (behind ViewerSmoothPresenter; off by default).
+    private readonly SmoothZoomHudFade _hudFade = new();
+    private bool _pixelGridArmed;
+    private float _lastAnnouncedZoom = float.NaN;
+    private float _zoomAtGestureStart = 1f;
+    private bool _hudPointerOver;
+    private bool _hudFocusWithin;
+    private long _lastHudQpc;
+
     public SmoothPresenterWindow()
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = false;
         Closed += OnClosed;
         Activated += OnActivated;
+        if (Content is FrameworkElement rootFe)
+        {
+            rootFe.ActualThemeChanged += (_, _) => ApplyHudTheme();
+            ApplyHudTheme();
+        }
+
         // SwapChainPanel is not focusable, so its KeyDown never fires; window-scoped
-        // accelerators make R / Shift+R rotate reachable.
+        // accelerators make R / Shift+R / 0 / 1 / G / +/- reachable.
         if (Content is UIElement root)
         {
-            var cw = new KeyboardAccelerator { Key = VirtualKey.R };
-            cw.Invoked += (_, a) => { RotateView(clockwise: true); a.Handled = true; };
-            var ccw = new KeyboardAccelerator { Key = VirtualKey.R, Modifiers = VirtualKeyModifiers.Shift };
-            ccw.Invoked += (_, a) => { RotateView(clockwise: false); a.Handled = true; };
-            root.KeyboardAccelerators.Add(cw);
-            root.KeyboardAccelerators.Add(ccw);
+            AddAccel(root, VirtualKey.R, () => RotateView(clockwise: true));
+            AddAccel(root, VirtualKey.R, () => RotateView(clockwise: false), VirtualKeyModifiers.Shift);
+            AddAccel(root, VirtualKey.Number0, ApplyFitZoom);
+            AddAccel(root, VirtualKey.Number0, ApplyFitZoom, VirtualKeyModifiers.Control);
+            AddAccel(root, VirtualKey.NumberPad0, ApplyFitZoom);
+            AddAccel(root, VirtualKey.Number1, ApplyActualZoom);
+            AddAccel(root, VirtualKey.Number1, ApplyActualZoom, VirtualKeyModifiers.Control);
+            AddAccel(root, VirtualKey.NumberPad1, ApplyActualZoom);
+            AddAccel(root, VirtualKey.G, TogglePixelGrid);
+            AddAccel(root, VirtualKey.Add, () => NudgeZoom(inward: true));
+            AddAccel(root, VirtualKey.Subtract, () => NudgeZoom(inward: false));
+        }
+    }
+
+    private static void AddAccel(
+        UIElement root,
+        VirtualKey key,
+        Action action,
+        VirtualKeyModifiers modifiers = VirtualKeyModifiers.None)
+    {
+        var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
+        accel.Invoked += (_, a) =>
+        {
+            action();
+            a.Handled = true;
+        };
+        root.KeyboardAccelerators.Add(accel);
+    }
+
+    private void ApplyHudTheme()
+    {
+        var light = Content is FrameworkElement fe
+            && fe.ActualTheme == ElementTheme.Light;
+        _hudFade.SetTheme(isLightTheme: light);
+        if (_hudFade.IsResting)
+        {
+            BrdZoomHud.Opacity = SmoothZoomHud.RestOpacity(light);
         }
     }
 
@@ -120,6 +167,7 @@ public sealed partial class SmoothPresenterWindow : Window
             }
 
             TickTransformEase();
+            TickZoomHud();
 
             if (_gpuUnavailable)
             {
@@ -746,15 +794,235 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void ScpSmooth_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key != VirtualKey.R)
+        var keyCode = (int)e.Key;
+        var ctrl = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+            .HasFlag(CoreVirtualKeyStates.Down);
+
+        if (e.Key == VirtualKey.R)
+        {
+            var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+                .HasFlag(CoreVirtualKeyStates.Down);
+            RotateView(clockwise: !shift);
+            e.Handled = true;
+            return;
+        }
+
+        if (SmoothZoomHud.RequestsFit(keyCode))
+        {
+            ApplyFitZoom();
+            e.Handled = true;
+            return;
+        }
+
+        if (SmoothZoomHud.RequestsActual(keyCode))
+        {
+            ApplyActualZoom();
+            e.Handled = true;
+            return;
+        }
+
+        if (SmoothZoomHud.TogglesGrid(ctrl, keyCode))
+        {
+            TogglePixelGrid();
+            e.Handled = true;
+            return;
+        }
+
+        if (SmoothZoomHud.ZoomsIn(keyCode))
+        {
+            NudgeZoom(inward: true);
+            e.Handled = true;
+            return;
+        }
+
+        if (SmoothZoomHud.ZoomsOut(keyCode))
+        {
+            NudgeZoom(inward: false);
+            e.Handled = true;
+        }
+    }
+
+    private void ApplyFitZoom()
+    {
+        if (_presenter is null || !_hostStarted)
         {
             return;
         }
 
-        var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
-            .HasFlag(CoreVirtualKeyStates.Down);
-        RotateView(clockwise: !shift);
-        e.Handled = true;
+        MarkHudGestureStart();
+        ApplyFitTransformFromPanel();
+        NotifyHudActivity(gestureEnded: true);
+        SyncZoomHudChrome();
+    }
+
+    private void ApplyActualZoom()
+    {
+        if (_presenter is null || !_hostStarted)
+        {
+            return;
+        }
+
+        MarkHudGestureStart();
+        var (_, _, sx, sy) = PanelMetrics();
+        var panelW = (float)(ScpSmooth.ActualWidth * sx);
+        var panelH = (float)(ScpSmooth.ActualHeight * sy);
+        var aboutX = panelW * 0.5f;
+        var aboutY = panelH * 0.5f;
+        var next = SmoothViewport.ZoomAbout(_zoom, _tx, _ty, SmoothZoomHud.ActualZoom, aboutX, aboutY);
+        _zoom = next.Zoom;
+        _targetZoom = next.Zoom;
+        _tx = next.Tx;
+        _ty = next.Ty;
+        _presenter.SetViewportTransform(_zoom, _tx, _ty);
+        _transformDirty = false;
+        _panSnapApplied = false;
+        NotifyHudActivity(gestureEnded: true);
+        SyncZoomHudChrome();
+    }
+
+    private void TogglePixelGrid()
+    {
+        _pixelGridArmed = !_pixelGridArmed;
+        _presenter?.SetPixelGridArmed(_pixelGridArmed);
+        SyncZoomHudChrome();
+        _hudFade.NotifyActivity();
+    }
+
+    private void NudgeZoom(bool inward)
+    {
+        if (_presenter is null || !_hostStarted)
+        {
+            return;
+        }
+
+        MarkHudGestureStart();
+        var (_, _, sx, sy) = PanelMetrics();
+        _lastPanX = (float)(ScpSmooth.ActualWidth * sx * 0.5);
+        _lastPanY = (float)(ScpSmooth.ActualHeight * sy * 0.5);
+        var factor = SmoothViewport.WheelZoomFactor(inward ? 1 : -1, fine: false);
+        _targetZoom = SmoothViewport.ClampZoom(_targetZoom * factor, _fitZoom);
+        SmoothPresenterLog.MarkWheelInput(_targetZoom);
+        _panSnapApplied = false;
+        NotifyHudActivity(gestureEnded: false);
+    }
+
+    private void BtnSmoothFit_Click(object sender, RoutedEventArgs e) => ApplyFitZoom();
+
+    private void BtnSmoothActual_Click(object sender, RoutedEventArgs e) => ApplyActualZoom();
+
+    private void BtnSmoothGrid_Click(object sender, RoutedEventArgs e) => TogglePixelGrid();
+
+    private void BrdZoomHud_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _hudPointerOver = true;
+        UpdateHudPointerOrFocus();
+    }
+
+    private void BrdZoomHud_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _hudPointerOver = false;
+        UpdateHudPointerOrFocus();
+    }
+
+    private void BrdZoomHud_GotFocus(object sender, RoutedEventArgs e)
+    {
+        _hudFocusWithin = true;
+        UpdateHudPointerOrFocus();
+    }
+
+    private void BrdZoomHud_LostFocus(object sender, RoutedEventArgs e)
+    {
+        _hudFocusWithin = false;
+        UpdateHudPointerOrFocus();
+    }
+
+    private void HudButton_GotFocus(object sender, RoutedEventArgs e)
+    {
+        _hudFocusWithin = true;
+        UpdateHudPointerOrFocus();
+    }
+
+    private void HudButton_LostFocus(object sender, RoutedEventArgs e)
+    {
+        // Focus may move to another HUD button — defer; next GotFocus restores.
+        _hudFocusWithin = BtnZoomHudFit.FocusState != FocusState.Unfocused
+            || BtnZoomHudActual.FocusState != FocusState.Unfocused
+            || BtnZoomHudGrid.FocusState != FocusState.Unfocused;
+        UpdateHudPointerOrFocus();
+    }
+
+    private void UpdateHudPointerOrFocus() =>
+        _hudFade.SetPointerOrFocus(_hudPointerOver || _hudFocusWithin);
+
+    private void MarkHudGestureStart() => _zoomAtGestureStart = _zoom;
+
+    private void NotifyHudActivity(bool gestureEnded)
+    {
+        _hudFade.NotifyActivity();
+        MaybeAnnounceZoom(gestureEnded);
+        SyncZoomHudChrome();
+    }
+
+    private void TickZoomHud()
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        float dt;
+        if (_lastHudQpc == 0)
+        {
+            dt = 1f / 60f;
+        }
+        else
+        {
+            dt = SmoothViewport.ClampFrameDt(
+                (float)((now - _lastHudQpc) / (double)System.Diagnostics.Stopwatch.Frequency));
+        }
+
+        _lastHudQpc = now;
+
+        // When ease is still running, treat as activity so the pill stays full.
+        if (!SmoothViewport.IsEaseSettled(_zoom, _targetZoom) || _panning || _pinching)
+        {
+            _hudFade.NotifyActivity();
+        }
+
+        BrdZoomHud.Opacity = _hudFade.Tick(dt);
+        SyncZoomHudChrome();
+    }
+
+    private void SyncZoomHudChrome()
+    {
+        var displayZoom = _zoom;
+        TxtZoomHudPercent.Text = SmoothZoomHud.FormatPercent(displayZoom);
+
+        var atFit = SmoothZoomHud.IsAtFit(displayZoom, _fitZoom);
+        var atActual = SmoothZoomHud.IsAtActual(displayZoom);
+        BtnSmoothToolbarFit.IsChecked = atFit;
+        BtnZoomHudFit.IsChecked = atFit;
+        BtnSmoothToolbarActual.IsChecked = atActual;
+        BtnZoomHudActual.IsChecked = atActual;
+        BtnSmoothToolbarGrid.IsChecked = _pixelGridArmed;
+        BtnZoomHudGrid.IsChecked = _pixelGridArmed;
+
+        var gridTip = SmoothZoomHud.GridTooltip(displayZoom);
+        ToolTipService.SetToolTip(BtnSmoothToolbarGrid, gridTip);
+        ToolTipService.SetToolTip(BtnZoomHudGrid, gridTip);
+
+        var dim = SmoothZoomHud.IsGridIconDimmed(displayZoom);
+        IcnZoomHudGrid.Opacity = dim && _pixelGridArmed ? 0.45 : (dim ? 0.55 : 1.0);
+        BtnZoomHudGrid.Opacity = dim ? 0.65 : 1.0;
+    }
+
+    private void MaybeAnnounceZoom(bool gestureEnded)
+    {
+        var prev = float.IsNaN(_lastAnnouncedZoom) ? _zoomAtGestureStart : _lastAnnouncedZoom;
+        if (!SmoothZoomHud.ShouldAnnounce(prev, _zoom, _fitZoom, gestureEnded))
+        {
+            return;
+        }
+
+        _lastAnnouncedZoom = _zoom;
+        // LiveSetting=Polite on TxtZoomHudPercent: rewrite Name so Narrator hears the value.
+        AutomationProperties.SetName(TxtZoomHudPercent, SmoothZoomHud.AnnounceText(_zoom));
     }
 
     private void RotateView(bool clockwise)
@@ -870,10 +1138,12 @@ public sealed partial class SmoothPresenterWindow : Window
             .HasFlag(CoreVirtualKeyStates.Down);
         var factor = SmoothViewport.WheelZoomFactor(notches, fine: ctrl);
         // Only move the target — EaseZoom / ZoomAbout run on the timer (no skip).
+        MarkHudGestureStart();
         _targetZoom = SmoothViewport.ClampZoom(_targetZoom * factor, _fitZoom);
         // Present-path latency (PALACE_SMOOTH_FRAME_LOG only): QPC → first Present.
         SmoothPresenterLog.MarkWheelInput(_targetZoom);
         _panSnapApplied = false;
+        NotifyHudActivity(gestureEnded: false);
         e.Handled = true;
     }
 
@@ -903,12 +1173,14 @@ public sealed partial class SmoothPresenterWindow : Window
         // (pointer pan is Mouse/Pen only — Isiac two-finger fly-off).
         var next = SmoothViewport.ManipulationScaleTranslate(
             _zoom, _tx, _ty, scale, cx, cy, dx, dy, _fitZoom);
+        MarkHudGestureStart();
         _zoom = next.Zoom;
         _targetZoom = next.Zoom;
         _tx = next.Tx;
         _ty = next.Ty;
         _transformDirty = true;
         _panSnapApplied = false;
+        NotifyHudActivity(gestureEnded: false);
         e.Handled = true;
     }
 
@@ -916,6 +1188,7 @@ public sealed partial class SmoothPresenterWindow : Window
     {
         _pinching = false;
         TrySnapPanAtRest();
+        NotifyHudActivity(gestureEnded: true);
         e.Handled = true;
     }
 
@@ -968,6 +1241,7 @@ public sealed partial class SmoothPresenterWindow : Window
         _lastPanX = x;
         _lastPanY = y;
         _transformDirty = true;
+        NotifyHudActivity(gestureEnded: false);
         e.Handled = true;
     }
 
@@ -981,6 +1255,7 @@ public sealed partial class SmoothPresenterWindow : Window
 
         EndPointerPanClean();
         TrySnapPanAtRest();
+        NotifyHudActivity(gestureEnded: true);
         e.Handled = true;
     }
 
